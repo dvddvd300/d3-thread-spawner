@@ -39,7 +39,7 @@ def launch_batch(items: List[WorkItem], settings: AgentSettings) -> Tuple[int, i
                 branch_info = f"→ NEW {item.branch} (from {src})"
 
             print(
-                f"  [{s.model}|{s.mode}|{s.effort}|"
+                f"  [{s.model}|{s.mode}|{s.access}|{s.effort}|"
                 f"ctx:{s.context_window}] "
                 f"{item.name} {branch_info}"
             )

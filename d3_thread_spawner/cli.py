@@ -39,9 +39,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Claude model alias or full ID (default: opus)",
     )
     parser.add_argument(
-        "--mode", choices=["plan", "full", "auto-accept"], default=None,
-        help="Agent mode: plan=stops before coding, full=autonomous, "
-             "auto-accept=accepts edits (default: plan)",
+        "--mode", choices=["build", "plan"], default=None,
+        help="Interaction mode: build=act immediately, "
+             "plan=research and propose first (default: build)",
+    )
+    parser.add_argument(
+        "--access", choices=["full", "auto-accept", "supervised"], default=None,
+        help="Access level: full=no prompts, auto-accept=approve edits only, "
+             "supervised=approve everything (default: full)",
     )
     parser.add_argument(
         "--effort", choices=["low", "medium", "high", "max"], default=None,
@@ -239,7 +244,7 @@ def main() -> int:
             log("❌", f"Not a git repo: {settings.repo_dir}")
             return 1
 
-    log("⚙️ ", f"model={settings.model}  mode={settings.mode}  "
+    log("⚙️ ", f"model={settings.model}  mode={settings.mode}  access={settings.access}  "
         f"effort={settings.effort}  ctx={settings.context_window}")
 
     from .commands.spawn import cmd_spawn

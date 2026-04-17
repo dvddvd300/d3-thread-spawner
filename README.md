@@ -82,7 +82,7 @@ d3-spawn spawn "Cherry-pick fix" --new-branch hotfix/auth --fork-from release/v2
 d3-spawn spawn "PROJ-123: Fix login timeout" --template ~/prompts/my-template.txt
 
 # Override settings
-d3-spawn --model sonnet --mode full --effort max spawn "Quick fix"
+d3-spawn --model sonnet --mode build --access full --effort max spawn "Quick fix"
 ```
 
 ### `pr` — Address PR review comments
@@ -149,7 +149,8 @@ Create with `d3-spawn config --init` or manually:
 
 [general]
 model = "opus"              # opus, sonnet, haiku, or full model ID
-mode = "plan"               # plan | full | auto-accept
+mode = "build"              # build | plan (interaction mode)
+access = "full"             # full | auto-accept | supervised (access level)
 effort = "high"             # low | medium | high | max
 base_branch = "main"
 
@@ -185,7 +186,8 @@ fast_mode = false
 | `D3TS_T3_TOKEN` | Explicit T3 session token (skips cookies DB lookup) |
 | `D3TS_T3_PROJECT_ID` | T3 project UUID |
 | `D3TS_MODEL` | Default model |
-| `D3TS_MODE` | Default mode (plan/full/auto-accept) |
+| `D3TS_MODE` | Interaction mode (build/plan) |
+| `D3TS_ACCESS` | Access level (full/auto-accept/supervised) |
 | `D3TS_EFFORT` | Default effort level |
 | `D3TS_BASE_BRANCH` | Default base branch |
 | `D3TS_BATCH_SIZE` | Default batch size |
@@ -212,7 +214,8 @@ For launching many tasks, create a JSONL file (one JSON object per line):
 | `new_branch` | no | Create a new branch |
 | `fork_from` | no | Branch to fork from (with `new_branch`) |
 | `model` | no | Override model for this task |
-| `mode` | no | Override mode for this task |
+| `mode` | no | Override interaction mode (build/plan) |
+| `access` | no | Override access level (full/auto-accept/supervised) |
 | `effort` | no | Override effort for this task |
 
 Launch with:
@@ -247,7 +250,8 @@ d3-spawn [flags] <command> [command-flags]
 | Flag | Description |
 |------|-------------|
 | `--model MODEL` | Claude model alias or full ID |
-| `--mode MODE` | plan, full, or auto-accept |
+| `--mode MODE` | Interaction mode: build or plan |
+| `--access LEVEL` | Access level: full, auto-accept, or supervised |
 | `--effort LEVEL` | low, medium, high, or max |
 | `--context-window SIZE` | 200k or 1m |
 | `--thinking / --no-thinking` | Enable/disable thinking |

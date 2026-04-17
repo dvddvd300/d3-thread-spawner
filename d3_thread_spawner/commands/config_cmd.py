@@ -17,7 +17,8 @@ TEMPLATE = """\
 
 [general]
 # model = "opus"              # opus, sonnet, haiku, or full model ID
-# mode = "plan"               # plan (stops before coding), full (autonomous), auto-accept
+# mode = "build"              # build (act immediately) or plan (propose first)
+# access = "full"             # full, auto-accept, supervised
 # effort = "high"             # low, medium, high, max
 # base_branch = "main"        # default base branch for new worktrees
 # repo_dir = "."              # "." = auto-detect from CWD

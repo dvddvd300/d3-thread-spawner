@@ -4,7 +4,8 @@
 
 [general]
 model = "opus"                     # opus, sonnet, haiku, or full model ID
-mode = "plan"                      # plan | full | auto-accept
+mode = "build"                     # build | plan (interaction mode)
+access = "full"                    # full | auto-accept | supervised (access level)
 effort = "high"                    # low | medium | high | max
 base_branch = "main"               # default base branch for worktrees
 # repo_dir = "~/my-project"        # explicit repo path (default: CWD)

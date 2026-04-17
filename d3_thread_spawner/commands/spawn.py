@@ -61,6 +61,7 @@ def _load_jsonl(path: str, settings: AgentSettings) -> List[WorkItem]:
             item_settings = AgentSettings(
                 model=entry.get("model", settings.model),
                 mode=entry.get("mode", settings.mode),
+                access=entry.get("access", settings.access),
                 effort=entry.get("effort", settings.effort),
                 base_branch=settings.base_branch,
                 repo_dir=settings.repo_dir,

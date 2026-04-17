@@ -158,12 +158,15 @@ def launch_t3(item: WorkItem, token: str) -> str:
     }
 
     runtime_mode = {
-        "plan": "full-access",
         "full": "full-access",
         "auto-accept": "auto-accept-edits",
-    }.get(s.mode, "full-access")
+        "supervised": "approval-required",
+    }.get(s.access, "full-access")
 
-    interaction_mode = "plan" if s.mode == "plan" else "default"
+    interaction_mode = {
+        "build": "default",
+        "plan": "plan",
+    }.get(s.mode, "default")
 
     headers = {
         "Cookie": f"t3_session_{s.t3_port}={token}; t3_session={token}",

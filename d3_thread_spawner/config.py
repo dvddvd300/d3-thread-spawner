@@ -14,7 +14,8 @@ from .util import log, log_verbose
 DEFAULTS = {
     "general": {
         "model": "opus",
-        "mode": "plan",
+        "mode": "build",
+        "access": "full",
         "effort": "high",
         "base_branch": "main",
         "repo_dir": ".",
@@ -52,6 +53,7 @@ DEFAULTS = {
 ENV_MAP = {
     "D3TS_MODEL": ("general", "model"),
     "D3TS_MODE": ("general", "mode"),
+    "D3TS_ACCESS": ("general", "access"),
     "D3TS_EFFORT": ("general", "effort"),
     "D3TS_BASE_BRANCH": ("general", "base_branch"),
     "D3TS_REPO_DIR": ("general", "repo_dir"),
@@ -123,6 +125,7 @@ def _apply_cli(config: dict, cli_args) -> dict:
     cli_map = {
         ("general", "model"): "model",
         ("general", "mode"): "mode",
+        ("general", "access"): "access",
         ("general", "effort"): "effort",
         ("general", "base_branch"): "base_branch",
         ("general", "repo_dir"): "repo",
@@ -249,7 +252,8 @@ def load_config(cli_args=None) -> AgentSettings:
 
     return AgentSettings(
         model=gen.get("model", "opus"),
-        mode=gen.get("mode", "plan"),
+        mode=gen.get("mode", "build"),
+        access=gen.get("access", "full"),
         effort=gen.get("effort", "high"),
         base_branch=gen.get("base_branch", "main"),
         repo_dir=repo_dir,

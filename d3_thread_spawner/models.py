@@ -11,7 +11,8 @@ class AgentSettings:
     """Resolved settings for a single agent launch."""
 
     model: str = "opus"
-    mode: str = "plan"
+    mode: str = "build"           # "build" or "plan" (interaction mode)
+    access: str = "full"          # "full", "auto-accept", "supervised" (runtime mode)
     effort: str = "high"
     base_branch: str = "main"
     repo_dir: str = "."
