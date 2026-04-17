@@ -1,0 +1,36 @@
+# d3-thread-spawner — Example global config
+# Copy to ~/.config/d3ts/config.toml for global defaults,
+# or to .d3ts.toml in your repo root for per-project settings.
+
+[general]
+model = "opus"                     # opus, sonnet, haiku, or full model ID
+mode = "plan"                      # plan | full | auto-accept
+effort = "high"                    # low | medium | high | max
+base_branch = "main"               # default base branch for worktrees
+# repo_dir = "~/my-project"        # explicit repo path (default: CWD)
+
+[batch]
+size = 5                           # threads per batch
+delay = 0                          # minutes between batches
+launch_delay = 0.5                 # seconds between individual launches
+
+[t3]
+# project_id = "your-uuid-here"   # auto-detected from T3 state if empty
+# T3 host/port are auto-detected from ~/.t3/userdata/server-runtime.json
+
+[worktree]
+dir = "~/d3ts-worktrees/{project}" # {project} = repo directory name
+
+[github]
+# repo = "owner/name"             # auto-detected from git remote origin
+
+[models]
+# Define aliases for model IDs. Use these with --model flag.
+opus = "claude-opus-4-6"
+sonnet = "claude-sonnet-4-6"
+haiku = "claude-haiku-4-5"
+
+[model_options]
+context_window = "1m"              # 200k or 1m
+thinking = true
+fast_mode = false

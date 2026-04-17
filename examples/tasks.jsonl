@@ -1,0 +1,3 @@
+{"name": "fix-auth-bug", "prompt": "Fix the authentication timeout bug in the login flow. Users report being logged out after 5 minutes.", "new_branch": "bugfix/auth-timeout"}
+{"name": "add-pagination", "prompt": "Add cursor-based pagination to the /api/users endpoint. Follow the existing pagination pattern.", "new_branch": "feature/users-pagination"}
+{"name": "update-tests", "prompt": "Update the unit tests for the payment service to cover the new refund edge cases.", "branch": "dev"}
