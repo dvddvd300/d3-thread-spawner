@@ -16,8 +16,7 @@ def launch_batch(items: List[WorkItem], settings: AgentSettings) -> Tuple[int, i
         log("⚠️ ", "Nothing to launch.")
         return 0, 0
 
-    cookies_path = "~/Library/Application Support/t3code/Cookies"
-    t3_token = get_t3_token(cookies_path, settings.t3_port)
+    t3_token = get_t3_token(settings.cookies_path, settings.t3_port)
     log("🔑", "Got T3 session token")
 
     total = len(items)
@@ -61,7 +60,7 @@ def launch_batch(items: List[WorkItem], settings: AgentSettings) -> Tuple[int, i
             log("⏳", f"Waiting {settings.batch_delay}m before batch {batch_num + 1}...")
             time.sleep(wait)
             # Refresh token in case session rotated
-            t3_token = get_t3_token(cookies_path, settings.t3_port)
+            t3_token = get_t3_token(settings.cookies_path, settings.t3_port)
 
         if total_batches > 1:
             log("▶ ", f"Batch {batch_num + 1}/{total_batches} — {len(batch)} thread(s)")

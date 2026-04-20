@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import tempfile
 
 from ..models import AgentSettings
 from ..util import log, run
@@ -12,7 +13,7 @@ from ..util import log, run
 def cmd_clean(args, settings: AgentSettings):
     """Remove finished worktrees and launcher scripts."""
 
-    launchers_dir = "/tmp/d3ts"
+    launchers_dir = os.path.join(tempfile.gettempdir(), "d3ts")
     worktree_dir = settings.worktree_dir
 
     # Clean launcher scripts

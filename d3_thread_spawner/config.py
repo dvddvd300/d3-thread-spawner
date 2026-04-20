@@ -3,12 +3,27 @@
 from __future__ import annotations
 
 import os
+import sys
 import tomllib
 from pathlib import Path
 from typing import Any, Dict, Optional
 
 from .models import AgentSettings
 from .util import log, log_verbose
+
+
+def _default_cookies_path() -> str:
+    """Return the default T3 Cookies DB path for the current platform."""
+    if sys.platform == "darwin":
+        return "~/Library/Application Support/t3code/Cookies"
+    elif sys.platform == "win32":
+        appdata = os.environ.get("APPDATA", "")
+        if appdata:
+            return os.path.join(appdata, "t3code", "Network", "Cookies")
+        return os.path.join("~", "AppData", "Roaming", "t3code", "Network", "Cookies")
+    else:
+        return "~/.config/t3code/Cookies"
+
 
 # Built-in defaults
 DEFAULTS = {
@@ -27,7 +42,7 @@ DEFAULTS = {
     },
     "t3": {
         "project_id": "",
-        "cookies_path": "~/Library/Application Support/t3code/Cookies",
+        "cookies_path": _default_cookies_path(),
         "runtime_json": "~/.t3/userdata/server-runtime.json",
         "state_db": "~/.t3/userdata/state.sqlite",
     },
@@ -245,6 +260,11 @@ def load_config(cli_args=None) -> AgentSettings:
         config.get("worktree", {}).get("dir", DEFAULTS["worktree"]["dir"])
     ).replace("{project}", project_name)
 
+    # Resolve cookies path
+    cookies_path = os.path.expanduser(
+        config.get("t3", {}).get("cookies_path", DEFAULTS["t3"]["cookies_path"])
+    )
+
     gen = config.get("general", {})
     batch = config.get("batch", {})
     t3 = config.get("t3", {})
@@ -267,6 +287,7 @@ def load_config(cli_args=None) -> AgentSettings:
         t3_host=t3_host,
         t3_port=t3_port,
         t3_project_id=t3.get("project_id", ""),
+        cookies_path=cookies_path,
         worktree_dir=wt_dir,
         github_repo=gh_repo,
         model_aliases=config.get("models", DEFAULTS["models"]),

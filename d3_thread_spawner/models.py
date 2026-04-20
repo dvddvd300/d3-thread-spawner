@@ -32,6 +32,9 @@ class AgentSettings:
     # Worktree
     worktree_dir: str = ""
 
+    # Paths
+    cookies_path: str = ""
+
     # GitHub
     github_repo: str = ""
 
