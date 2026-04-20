@@ -208,7 +208,11 @@ def _auto_detect_t3(config: dict) -> tuple:
     try:
         with open(runtime_path) as f:
             data = json.load(f)
-        return data.get("host", "127.0.0.1"), data.get("port", 3773)
+        host = data.get("host", "127.0.0.1")
+        # 0.0.0.0 is a valid bind address but not a valid connect address on Windows
+        if host == "0.0.0.0":
+            host = "127.0.0.1"
+        return host, data.get("port", 3773)
     except (FileNotFoundError, json.JSONDecodeError, KeyError):
         return "127.0.0.1", 3773
 
@@ -254,16 +258,16 @@ def load_config(cli_args=None) -> AgentSettings:
     if not gh_repo:
         gh_repo = _auto_detect_github_repo(repo_dir)
 
-    # Resolve worktree dir
+    # Resolve worktree dir (normpath fixes mixed separators on Windows)
     project_name = os.path.basename(repo_dir)
-    wt_dir = os.path.expanduser(
+    wt_dir = os.path.normpath(os.path.expanduser(
         config.get("worktree", {}).get("dir", DEFAULTS["worktree"]["dir"])
-    ).replace("{project}", project_name)
+    ).replace("{project}", project_name))
 
     # Resolve cookies path
-    cookies_path = os.path.expanduser(
+    cookies_path = os.path.normpath(os.path.expanduser(
         config.get("t3", {}).get("cookies_path", DEFAULTS["t3"]["cookies_path"])
-    )
+    ))
 
     gen = config.get("general", {})
     batch = config.get("batch", {})

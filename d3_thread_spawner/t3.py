@@ -35,7 +35,11 @@ def auto_detect_t3_connection(runtime_json_path: str) -> tuple:
 
 
 def _token_from_cookies(cookies_path: str, port: int) -> Optional[str]:
-    """Try to read the session token from the Cookies SQLite DB."""
+    """Try to read the session token from the Cookies SQLite DB.
+
+    Works on macOS (advisory file locks). On Windows, Chromium holds an
+    exclusive lock on the Cookies file, so this will return None.
+    """
     db_path = os.path.expanduser(cookies_path)
     if not os.path.isfile(db_path):
         return None
@@ -54,34 +58,8 @@ def _token_from_cookies(cookies_path: str, port: int) -> Optional[str]:
             conn.close()
             if row and row[0]:
                 return row[0]
-        except sqlite3.Error:
+        except (sqlite3.Error, PermissionError, OSError):
             continue
-    return None
-
-
-def _token_from_state_db(state_db_path: str) -> Optional[str]:
-    """Try to read the session token from T3's state.sqlite (auth_sessions).
-
-    This is the fallback for Windows where the Cookies file is locked by T3.
-    """
-    db_path = os.path.expanduser(state_db_path)
-    if not os.path.isfile(db_path):
-        return None
-
-    db_uri_path = db_path.replace("\\", "/")
-
-    try:
-        conn = sqlite3.connect(f"file:{db_uri_path}?mode=ro", uri=True)
-        row = conn.execute(
-            "SELECT session_id FROM auth_sessions "
-            "WHERE revoked_at IS NULL AND role = 'owner' "
-            "ORDER BY issued_at DESC LIMIT 1",
-        ).fetchone()
-        conn.close()
-        if row and row[0]:
-            return row[0]
-    except sqlite3.Error:
-        pass
     return None
 
 
@@ -90,30 +68,45 @@ def get_t3_token(cookies_path: str, port: int) -> str:
 
     Resolution order:
     1. D3TS_T3_TOKEN env var
-    2. Cookies SQLite DB (works on macOS; locked on Windows)
-    3. state.sqlite auth_sessions (cross-platform fallback)
+    2. Cookies SQLite DB (works on macOS; locked by Chromium on Windows)
+
+    On Windows the Cookies DB is exclusively locked by T3 Code, so the
+    token must be provided via D3TS_T3_TOKEN.
     """
+    import sys
+
     # Allow explicit token via env var
     env_token = os.environ.get("D3TS_T3_TOKEN")
     if env_token:
         log_verbose("🔑", "Using T3 token from D3TS_T3_TOKEN env var")
         return env_token
 
-    # Try Cookies DB (primary, works on macOS)
+    # Try Cookies DB (works on macOS; locked on Windows)
     token = _token_from_cookies(cookies_path, port)
     if token:
         return token
 
-    # Fallback: read from state.sqlite (works when Cookies is locked on Windows)
-    state_db = os.path.expanduser("~/.t3/userdata/state.sqlite")
-    token = _token_from_state_db(state_db)
-    if token:
-        log_verbose("🔑", "Using T3 token from state.sqlite (Cookies DB unavailable)")
-        return token
+    # Platform-specific guidance
+    db_path = os.path.expanduser(cookies_path)
+    if sys.platform == "win32" and os.path.isfile(db_path):
+        raise RuntimeError(
+            "T3 Cookies DB is locked by the running T3 Code process (Windows).\n"
+            "On Windows you must provide the session token manually:\n\n"
+            f"  1. Open http://127.0.0.1:{port} in your browser\n"
+            f"  2. Open DevTools (F12) > Application > Cookies > http://127.0.0.1:{port}\n"
+            f"  3. Copy the value of the 't3_session_{port}' cookie\n"
+            f"  4. Set it:  set D3TS_T3_TOKEN=<paste-value-here>\n"
+        )
+
+    if not os.path.isfile(db_path):
+        raise RuntimeError(
+            f"T3 Cookies DB not found at {db_path}.\n"
+            "Is T3 Code installed? Set D3TS_T3_TOKEN env var as an alternative."
+        )
 
     raise RuntimeError(
-        "Could not get T3 session token.\n"
-        "Is T3 Code installed and running? Set D3TS_T3_TOKEN env var as an alternative."
+        "Could not read T3 session token from Cookies DB.\n"
+        "Is T3 Code running? Set D3TS_T3_TOKEN env var as an alternative."
     )
 
 

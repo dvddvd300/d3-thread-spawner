@@ -26,7 +26,7 @@ def ensure_worktree(
     - create_branch=False: checks out an existing branch (e.g., a PR branch)
     """
     sanitized = re.sub(r"[^a-zA-Z0-9._-]", "-", name)
-    wt_path = os.path.join(worktree_dir, sanitized)
+    wt_path = os.path.normpath(os.path.join(worktree_dir, sanitized))
 
     if os.path.isdir(wt_path):
         log("♻️ ", f"Worktree exists: {wt_path}")
