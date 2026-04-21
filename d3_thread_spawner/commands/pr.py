@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import List
 
 from ..batch import launch_batch
-from ..github import fetch_open_prs, fetch_pr_info
+from ..github import GitHubRateLimitError, fetch_open_prs, fetch_pr_info
 from ..models import AgentSettings, WorkItem
 from ..prompts import build_pr_review_prompt, build_pr_thread_prompt
 from ..util import log, slugify
@@ -18,6 +18,17 @@ def cmd_pr(args, settings: AgentSettings):
         log("❌", "GitHub repo not detected. Set [github] repo in config or use --repo.")
         return
 
+    try:
+        _cmd_pr(args, settings)
+    except GitHubRateLimitError as e:
+        print()
+        log("🚫", str(e))
+        log("💡", "Wait for the limit to reset, then retry.")
+        log("   ", "Check status: gh api rate_limit --jq '.resources.graphql'")
+
+
+def _cmd_pr(args, settings: AgentSettings):
+    """Inner implementation (separated so rate-limit errors propagate cleanly)."""
     owner = settings.github_owner
     name = settings.github_name
 
@@ -53,6 +64,8 @@ def cmd_pr(args, settings: AgentSettings):
                 include_resolved=args.include_resolved,
                 include_outdated=args.include_outdated,
             )
+        except GitHubRateLimitError:
+            raise  # propagate to top-level handler
         except Exception as e:
             log("❌", f"PR #{pr_num}: failed to fetch — {e}")
             continue
