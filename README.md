@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="favicon.svg" alt="d3-thread-spawner" width="64">
+</p>
+
 # d3-thread-spawner
 
 Programmatic [T3 Code](https://t3.chat) thread launcher. Spawn Claude Code agents in isolated git worktrees via the T3 Code API — one at a time or in configurable batches.
