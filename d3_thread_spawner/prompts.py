@@ -67,6 +67,18 @@ unresolved review comments below.
 
 WORKFLOW:
 
+  STEP 0 — SYNC WITH REMOTE:
+    Make sure your worktree matches the latest origin/{pr_branch} before
+    looking at anything else.
+    - `git fetch origin {pr_branch}`
+    - If `git status` shows any uncommitted changes, discard them
+      (`git restore .` and `git clean -fd`) — this is a fresh worktree and
+      stray edits are unexpected.
+    - `git pull --ff-only origin {pr_branch}` (or `git rebase origin/{pr_branch}`
+      if not fast-forward).
+    - Confirm `git status` is clean and HEAD matches origin/{pr_branch}
+      before proceeding.
+
   STEP 1 — ANALYZE EACH THREAD:
     For each review thread above:
     a) Read the file at the referenced path and line.
@@ -90,7 +102,7 @@ WORKFLOW:
     - Commit message: "address review feedback on #{pr_number}"
     - Push to the SAME branch ({pr_branch}) — do NOT create a new branch.
 
-Begin with Step 1 now."""
+Begin with Step 0 now."""
 
 BUILTIN_PR_REVIEW_CHUNK = """\
 You are an autonomous engineer addressing a SUBSET of code review feedback.
@@ -116,6 +128,18 @@ branch separately.
 ═══════════════════════════════════════════════════════════════
 
 WORKFLOW:
+
+  STEP 0 — SYNC WITH REMOTE:
+    Make sure your fork is on top of the latest origin/{pr_branch} before
+    looking at anything else.
+    - `git fetch origin {pr_branch}`
+    - If `git status` shows any uncommitted changes, discard them
+      (`git restore .` and `git clean -fd`) — this is a fresh worktree and
+      stray edits are unexpected.
+    - Your branch ({agent_branch}) is freshly forked locally and has no remote
+      yet — that's expected. If origin/{pr_branch} has advanced since your
+      fork point, rebase: `git rebase origin/{pr_branch}`.
+    - Confirm `git status` is clean before proceeding.
 
   STEP 1 — ANALYZE EACH THREAD:
     For each review thread above:
@@ -143,7 +167,7 @@ WORKFLOW:
     - Push to YOUR branch ({agent_branch}) — do NOT push to {pr_branch}.
       Sibling branches will be merged into the PR separately.
 
-Begin with Step 1 now."""
+Begin with Step 0 now."""
 
 BUILTIN_PR_THREAD = """\
 You are addressing a single code review comment on PR #{pr_number}.
@@ -164,6 +188,10 @@ REVIEW COMMENT:
 
 WORKFLOW:
 
+  0. SYNC WITH REMOTE: Run `git fetch origin {pr_branch}` and rebase your
+     branch onto it (`git rebase origin/{pr_branch}`) so you have the latest
+     review-target code. Discard any unexpected uncommitted changes
+     (`git restore .` / `git clean -fd`) — this is a fresh worktree.
   1. If there is a CLAUDE.md at the repo root, read it for project conventions.
   2. Read the file at {thread_path} around line {thread_line_or_section}.
   3. Understand the reviewer's concern and verify it against the current code.
