@@ -7,7 +7,12 @@ from typing import List
 from ..batch import launch_batch
 from ..github import GitHubRateLimitError, fetch_open_prs, fetch_pr_info
 from ..models import AgentSettings, WorkItem
-from ..prompts import build_pr_review_prompt, build_pr_thread_prompt
+from ..prompts import (
+    build_pr_review_chunk_prompt,
+    build_pr_review_prompt,
+    build_pr_thread_prompt,
+    split_threads_into_chunks,
+)
 from ..util import log, slugify
 
 
@@ -105,16 +110,38 @@ def _cmd_pr(args, settings: AgentSettings):
                     worktree_from=pr.branch,
                 ))
         else:
-            # One agent per PR (all threads bundled)
-            agent_name = f"pr-{pr_num}-review"
-            items.append(WorkItem(
-                name=agent_name,
-                branch=pr.branch,
-                prompt=build_pr_review_prompt(pr, threads),
-                settings=settings,
-                create_branch=False,
-                worktree_from=None,
-            ))
+            # One agent per PR (all threads bundled), unless the rendered
+            # prompt would exceed the max — then split into sibling chunks.
+            prompt = build_pr_review_prompt(pr, threads)
+            if len(prompt) <= settings.max_prompt_chars:
+                items.append(WorkItem(
+                    name=f"pr-{pr_num}-review",
+                    branch=pr.branch,
+                    prompt=prompt,
+                    settings=settings,
+                    create_branch=False,
+                    worktree_from=None,
+                ))
+            else:
+                chunks = split_threads_into_chunks(
+                    pr, threads, settings.max_prompt_chars
+                )
+                total = len(chunks)
+                log("✂️ ",
+                    f"PR #{pr_num}: prompt {len(prompt):,} chars > "
+                    f"{settings.max_prompt_chars:,} — splitting into {total} chunks")
+                for i, chunk in enumerate(chunks, 1):
+                    agent_branch = f"pr-{pr_num}/review-{i}of{total}"
+                    items.append(WorkItem(
+                        name=f"pr-{pr_num}-review-{i}of{total}",
+                        branch=agent_branch,
+                        prompt=build_pr_review_chunk_prompt(
+                            pr, chunk, agent_branch, i, total
+                        ),
+                        settings=settings,
+                        create_branch=True,
+                        worktree_from=pr.branch,
+                    ))
 
     if not items:
         log("⚠️ ", "No work items to launch.")

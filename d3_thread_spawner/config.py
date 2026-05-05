@@ -52,6 +52,9 @@ DEFAULTS = {
     "github": {
         "repo": "",
     },
+    "pr": {
+        "max_prompt_chars": 100_000,
+    },
     "models": {
         "opus": "claude-opus-4-6",
         "sonnet": "claude-sonnet-4-6",
@@ -79,6 +82,7 @@ ENV_MAP = {
     "D3TS_T3_TOKEN": ("t3", "token"),
     "D3TS_GITHUB_REPO": ("github", "repo"),
     "D3TS_CONTEXT_WINDOW": ("model_options", "context_window"),
+    "D3TS_PR_MAX_PROMPT_CHARS": ("pr", "max_prompt_chars"),
 }
 
 
@@ -151,6 +155,7 @@ def _apply_cli(config: dict, cli_args) -> dict:
         ("model_options", "context_window"): "context_window",
         ("model_options", "thinking"): "thinking",
         ("model_options", "fast_mode"): "fast_mode",
+        ("pr", "max_prompt_chars"): "max_prompt_chars",
     }
     for (section, key), attr in cli_map.items():
         val = getattr(cli_args, attr, None)
@@ -273,6 +278,7 @@ def load_config(cli_args=None) -> AgentSettings:
     batch = config.get("batch", {})
     t3 = config.get("t3", {})
     mo = config.get("model_options", {})
+    pr_cfg = config.get("pr", {})
 
     return AgentSettings(
         model=gen.get("model", "opus"),
@@ -295,6 +301,7 @@ def load_config(cli_args=None) -> AgentSettings:
         worktree_dir=wt_dir,
         github_repo=gh_repo,
         model_aliases=config.get("models", DEFAULTS["models"]),
+        max_prompt_chars=pr_cfg.get("max_prompt_chars", 100_000),
     )
 
 

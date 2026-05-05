@@ -23,6 +23,7 @@ class AgentSettings:
     batch_delay: int = 0
     launch_delay: float = 0.5
     dry_run: bool = False
+    max_prompt_chars: int = 100_000
 
     # T3
     t3_host: str = "127.0.0.1"

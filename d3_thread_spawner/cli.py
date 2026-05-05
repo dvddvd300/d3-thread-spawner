@@ -184,6 +184,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Launch one thread per review comment (default: one per PR)",
     )
     p_pr.add_argument(
+        "--max-prompt-chars", type=int, default=None,
+        help="Auto-split bundled review prompts above this size into "
+             "sibling-branch chunks (default: 100000; T3 server limit ≈ 120000)",
+    )
+    p_pr.add_argument(
         "--include-resolved", action="store_true",
         help="Include already-resolved threads",
     )

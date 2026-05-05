@@ -92,6 +92,59 @@ WORKFLOW:
 
 Begin with Step 1 now."""
 
+BUILTIN_PR_REVIEW_CHUNK = """\
+You are an autonomous engineer addressing a SUBSET of code review feedback.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PR:          #{pr_number} — {pr_title}
+PR BRANCH:   {pr_branch}
+URL:         {pr_url}
+
+YOUR BRANCH: {agent_branch} (forked from {pr_branch})
+CHUNK:       Part {chunk_index} of {total_chunks} — {thread_count} thread(s) in this chunk
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+The full review for this PR was split across {total_chunks} agents because the
+combined feedback exceeded the message size limit. You are agent {chunk_index}
+of {total_chunks}, responsible only for the threads listed below. Sibling
+agents are addressing the rest in parallel on sibling branches
+(pr-{pr_number}/review-Nof{total_chunks}); each will be merged into the PR
+branch separately.
+
+═══ UNRESOLVED REVIEW THREADS in this chunk ({thread_count}) ═══
+{threads_text}
+═══════════════════════════════════════════════════════════════
+
+WORKFLOW:
+
+  STEP 1 — ANALYZE EACH THREAD:
+    For each review thread above:
+    a) Read the file at the referenced path and line.
+    b) Understand the reviewer's concern fully (read the whole thread).
+    c) If the reviewer included an "AI Agent Instruction", follow it but
+       ALWAYS verify against the current code first — it may have changed.
+    d) Determine if the feedback is valid, already addressed, or not applicable.
+
+  STEP 2 — PLAN YOUR CHANGES:
+    Write a brief summary of what you will change for each thread.
+    If a thread's feedback is already addressed or not applicable, explain why.
+
+    STOP HERE. Present the plan and wait for human review before implementing.
+
+  STEP 3 — IMPLEMENT (after human approval):
+    - If there is a CLAUDE.md at the repo root, follow its conventions.
+    - Apply fixes for each valid review comment in this chunk only.
+    - Do NOT touch threads that belong to sibling chunks — they are owned by
+      other agents.
+    - Run linting and tests to verify.
+
+  STEP 4 — COMMIT & PUSH:
+    - Commit message: "address review feedback on #{pr_number} (part {chunk_index}/{total_chunks})"
+    - Push to YOUR branch ({agent_branch}) — do NOT push to {pr_branch}.
+      Sibling branches will be merged into the PR separately.
+
+Begin with Step 1 now."""
+
 BUILTIN_PR_THREAD = """\
 You are addressing a single code review comment on PR #{pr_number}.
 
@@ -198,6 +251,55 @@ def build_pr_review_prompt(pr: PRInfo, threads: List[ReviewThread]) -> str:
         "thread_count": str(len(threads)),
         "threads_text": threads_text,
     })
+
+
+def build_pr_review_chunk_prompt(
+    pr: PRInfo,
+    threads: List[ReviewThread],
+    agent_branch: str,
+    chunk_index: int,
+    total_chunks: int,
+) -> str:
+    """Build prompt for one chunk of a split bundled PR review."""
+    threads_text = format_threads_text(threads)
+    return render_prompt(BUILTIN_PR_REVIEW_CHUNK, {
+        "pr_number": str(pr.number),
+        "pr_title": pr.title,
+        "pr_branch": pr.branch,
+        "pr_url": pr.url,
+        "agent_branch": agent_branch,
+        "chunk_index": str(chunk_index),
+        "total_chunks": str(total_chunks),
+        "thread_count": str(len(threads)),
+        "threads_text": threads_text,
+    })
+
+
+def split_threads_into_chunks(
+    pr: PRInfo, threads: List[ReviewThread], max_chars: int
+) -> List[List[ReviewThread]]:
+    """Greedy bin-pack threads so each chunk's rendered prompt fits max_chars.
+
+    Each chunk is sized using build_pr_review_chunk_prompt — the same renderer
+    used to emit the prompt — so the size budget is exact. A high-digit
+    sentinel for chunk_index/total_chunks is used since the final count isn't
+    known up front; this slightly overestimates and never underestimates.
+    A thread that by itself renders larger than max_chars still gets its own
+    chunk — caller decides how to handle that downstream.
+    """
+    chunks: List[List[ReviewThread]] = [[]]
+    sent = 999  # 3-digit sentinel — ample for any real PR
+    fake_branch = f"pr-{pr.number}/review-{sent}of{sent}"
+    for thread in threads:
+        candidate = chunks[-1] + [thread]
+        rendered = build_pr_review_chunk_prompt(
+            pr, candidate, fake_branch, sent, sent
+        )
+        if len(rendered) <= max_chars or not chunks[-1]:
+            chunks[-1] = candidate
+        else:
+            chunks.append([thread])
+    return chunks
 
 
 def build_pr_thread_prompt(
