@@ -1,0 +1,58 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="80" y1="64" x2="432" y2="448" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFF7ED"/>
+      <stop offset="1" stop-color="#ECFCCB"/>
+    </linearGradient>
+    <linearGradient id="ring" x1="112" y1="112" x2="400" y2="400" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0F766E"/>
+      <stop offset="1" stop-color="#155E75"/>
+    </linearGradient>
+    <linearGradient id="leftCell" x1="172" y1="184" x2="244" y2="312" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FB923C"/>
+      <stop offset="1" stop-color="#EA580C"/>
+    </linearGradient>
+    <linearGradient id="rightCell" x1="268" y1="184" x2="340" y2="312" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FACC15"/>
+      <stop offset="1" stop-color="#CA8A04"/>
+    </linearGradient>
+    <filter id="shadow" x="52" y="52" width="408" height="408" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feFlood flood-opacity="0" result="BackgroundImageFix"/>
+      <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/>
+      <feOffset dy="16"/>
+      <feGaussianBlur stdDeviation="18"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 0.059 0 0 0 0 0.18 0 0 0 0 0.157 0 0 0 0.18 0"/>
+      <feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow_1_1"/>
+      <feBlend mode="normal" in="SourceGraphic" in2="effect1_dropShadow_1_1" result="shape"/>
+    </filter>
+  </defs>
+
+  <g filter="url(#shadow)">
+    <rect x="76" y="76" width="360" height="360" rx="96" fill="url(#bg)"/>
+    <rect x="76" y="76" width="360" height="360" rx="96" stroke="#D6D3D1" stroke-width="4"/>
+
+    <circle cx="256" cy="256" r="140" stroke="url(#ring)" stroke-width="28" stroke-linecap="round" stroke-dasharray="742 76"/>
+
+    <path d="M256 140V118" stroke="#0F766E" stroke-width="18" stroke-linecap="round"/>
+    <path d="M142 256H120" stroke="#0F766E" stroke-width="18" stroke-linecap="round"/>
+    <path d="M370 256H392" stroke="#0F766E" stroke-width="18" stroke-linecap="round"/>
+    <path d="M256 372V394" stroke="#0F766E" stroke-width="18" stroke-linecap="round"/>
+
+    <path d="M256 176V332" stroke="#134E4A" stroke-width="16" stroke-linecap="round" opacity="0.9"/>
+    <path d="M256 256L170 188" stroke="#0F766E" stroke-width="14" stroke-linecap="round" opacity="0.85"/>
+    <path d="M256 256L346 190" stroke="#0F766E" stroke-width="14" stroke-linecap="round" opacity="0.85"/>
+    <path d="M256 256L180 324" stroke="#0F766E" stroke-width="14" stroke-linecap="round" opacity="0.85"/>
+    <path d="M256 256L336 326" stroke="#0F766E" stroke-width="14" stroke-linecap="round" opacity="0.85"/>
+
+    <circle cx="216" cy="256" r="62" fill="url(#leftCell)"/>
+    <circle cx="296" cy="256" r="62" fill="url(#rightCell)"/>
+    <circle cx="256" cy="256" r="30" fill="#FFFBEB" stroke="#134E4A" stroke-width="12"/>
+
+    <circle cx="170" cy="188" r="26" fill="#CCFBF1" stroke="#0F766E" stroke-width="12"/>
+    <circle cx="346" cy="190" r="26" fill="#E0F2FE" stroke="#155E75" stroke-width="12"/>
+    <circle cx="180" cy="324" r="24" fill="#FED7AA" stroke="#C2410C" stroke-width="12"/>
+    <circle cx="336" cy="326" r="24" fill="#FEF08A" stroke="#A16207" stroke-width="12"/>
+
+    <path d="M256 138C282 138 302 156 314 175" stroke="#134E4A" stroke-width="12" stroke-linecap="round"/>
+  </g>
+</svg>
