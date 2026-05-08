@@ -71,6 +71,7 @@ def _load_jsonl(path: str, settings: AgentSettings) -> List[WorkItem]:
                 batch_size=settings.batch_size,
                 batch_delay=settings.batch_delay,
                 launch_delay=settings.launch_delay,
+                initial_wait=settings.initial_wait,
                 dry_run=settings.dry_run,
                 t3_host=settings.t3_host,
                 t3_port=settings.t3_port,

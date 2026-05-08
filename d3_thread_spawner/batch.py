@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from math import ceil
 from typing import List, Tuple
 
 from .models import AgentSettings, WorkItem
@@ -15,9 +16,6 @@ def launch_batch(items: List[WorkItem], settings: AgentSettings) -> Tuple[int, i
     if not items:
         log("⚠️ ", "Nothing to launch.")
         return 0, 0
-
-    t3_token = get_t3_token(settings.cookies_path, settings.t3_port)
-    log("🔑", "Got T3 session token")
 
     total = len(items)
     bs = settings.batch_size
@@ -46,6 +44,21 @@ def launch_batch(items: List[WorkItem], settings: AgentSettings) -> Tuple[int, i
             print(f"    {preview}...")
             print()
         return 0, 0
+
+    if settings.initial_wait > 0:
+        deadline = time.monotonic() + settings.initial_wait * 60
+        log("⏳", f"Waiting {settings.initial_wait}m before starting...")
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            mins = ceil(remaining / 60)
+            log("⏳", f"Initial wait: {mins}m remaining...")
+            time.sleep(min(60, remaining))
+        log("✅", "Wait complete — starting launches")
+
+    t3_token = get_t3_token(settings.cookies_path, settings.t3_port)
+    log("🔑", "Got T3 session token")
 
     created = 0
     failed = 0

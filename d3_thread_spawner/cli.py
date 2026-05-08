@@ -85,6 +85,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="Seconds between individual launches (default: 0.5)",
     )
     parser.add_argument(
+        "--initial-wait", type=int, default=None,
+        help="Minutes to wait before launching the first batch (default: 0)",
+    )
+    parser.add_argument(
         "--base-branch", default=None,
         help="Base git branch (default: main)",
     )
@@ -249,8 +253,9 @@ def main() -> int:
             log("❌", f"Not a git repo: {settings.repo_dir}")
             return 1
 
+    extra = f"  wait={settings.initial_wait}m" if settings.initial_wait > 0 else ""
     log("⚙️ ", f"model={settings.model}  mode={settings.mode}  access={settings.access}  "
-        f"effort={settings.effort}  ctx={settings.context_window}")
+        f"effort={settings.effort}  ctx={settings.context_window}{extra}")
 
     from .commands.spawn import cmd_spawn
     from .commands.pr import cmd_pr

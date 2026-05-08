@@ -162,6 +162,7 @@ base_branch = "main"
 size = 5                    # threads per batch
 delay = 0                   # minutes between batches
 launch_delay = 0.5          # seconds between individual launches
+initial_wait = 0              # minutes to wait before first batch
 
 [t3]
 project_id = ""             # auto-detected from T3 state if empty
@@ -195,6 +196,7 @@ fast_mode = false
 | `D3TS_EFFORT` | Default effort level |
 | `D3TS_BASE_BRANCH` | Default base branch |
 | `D3TS_BATCH_SIZE` | Default batch size |
+| `D3TS_INITIAL_WAIT` | Minutes to wait before first batch |
 | `D3TS_GITHUB_REPO` | GitHub repo (owner/name) |
 
 ## Batch Processing
@@ -226,6 +228,9 @@ Launch with:
 
 ```bash
 d3-spawn spawn --from-file tasks.jsonl --batch-size 10 --batch-delay 5
+
+# Wait 2 hours before starting, then launch 2 threads every 32 minutes
+d3-spawn spawn --from-file tasks.jsonl --initial-wait 120 --batch-size 2 --batch-delay 32
 ```
 
 ## T3 Connection
@@ -263,6 +268,7 @@ d3-spawn [flags] <command> [command-flags]
 | `--batch-size N` | Threads per batch |
 | `--batch-delay M` | Minutes between batches |
 | `--launch-delay S` | Seconds between launches |
+| `--initial-wait M` | Minutes to wait before first batch |
 | `--base-branch BRANCH` | Base git branch |
 | `--repo PATH` | Path to repository |
 | `--project-id UUID` | T3 project ID |

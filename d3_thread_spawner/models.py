@@ -22,6 +22,7 @@ class AgentSettings:
     batch_size: int = 5
     batch_delay: int = 0
     launch_delay: float = 0.5
+    initial_wait: int = 0
     dry_run: bool = False
     max_prompt_chars: int = 100_000
 

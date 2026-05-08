@@ -27,6 +27,7 @@ TEMPLATE = """\
 # size = 5                    # threads per batch
 # delay = 0                   # minutes between batches
 # launch_delay = 0.5          # seconds between individual launches
+# initial_wait = 0              # minutes to wait before first batch
 
 [t3]
 # project_id = ""             # T3 project UUID (auto-detected if empty)
