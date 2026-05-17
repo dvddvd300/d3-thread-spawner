@@ -174,7 +174,7 @@ dir = "~/d3ts-worktrees/{project}"   # {project} = repo dir name
 # repo = "owner/name"      # auto-detected from git remote
 
 [models]
-opus = "claude-opus-4-6"
+opus = "claude-opus-4-7"
 sonnet = "claude-sonnet-4-6"
 haiku = "claude-haiku-4-5"
 

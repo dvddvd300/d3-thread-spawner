@@ -42,7 +42,7 @@ class AgentSettings:
 
     # Model aliases
     model_aliases: Dict[str, str] = field(default_factory=lambda: {
-        "opus": "claude-opus-4-6",
+        "opus": "claude-opus-4-7",
         "sonnet": "claude-sonnet-4-6",
         "haiku": "claude-haiku-4-5",
     })

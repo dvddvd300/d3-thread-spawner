@@ -41,7 +41,7 @@ TEMPLATE = """\
 
 [models]
 # Define model aliases. The key is what you pass to --model.
-# opus = "claude-opus-4-6"
+# opus = "claude-opus-4-7"
 # sonnet = "claude-sonnet-4-6"
 # haiku = "claude-haiku-4-5"
 
