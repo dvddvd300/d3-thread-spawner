@@ -40,6 +40,10 @@ def launch_batch(items: List[WorkItem], settings: AgentSettings) -> Tuple[int, i
                 f"ctx:{s.context_window}] "
                 f"{item.name} {branch_info}"
             )
+            opts = ", ".join(
+                f"{o['id']}={o['value']}" for o in s.model_selection_options()
+            )
+            print(f"    model: {s.resolved_model}  options: [{opts}]")
             preview = item.prompt.replace("\n", " ")[:120]
             print(f"    {preview}...")
             print()

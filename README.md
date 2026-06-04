@@ -24,6 +24,13 @@ Programmatic [T3 Code](https://t3.chat) thread launcher. Spawn Claude Code agent
 - `gh` CLI (only for the `pr` command)
 - No pip dependencies — stdlib only
 
+> **Models & effort.** The `opus` alias maps to **Claude Opus 4.8**, which needs
+> T3 Code's bundled Claude Code CLI **≥ 2.1.154** (Opus 4.7 needs ≥ 2.1.111).
+> Effort levels `xhigh`, `ultracode`, and `ultrathink` are Opus-4.8 features.
+> d3 sends only the options each model actually supports — `context_window`
+> (Opus 4.8/4.7/4.6, Sonnet 4.6), `thinking` (Haiku 4.5), `fast_mode`
+> (Opus 4.5/4.6) — and T3 clamps an unsupported effort to the model's default.
+
 ## Quick Start
 
 ```bash
@@ -155,7 +162,7 @@ Create with `d3-spawn config --init` or manually:
 model = "opus"              # opus, sonnet, haiku, or full model ID
 mode = "build"              # build | plan (interaction mode)
 access = "full"             # full | auto-accept | supervised (access level)
-effort = "high"             # low | medium | high | max
+effort = "high"             # low | medium | high | xhigh | max | ultracode | ultrathink
 base_branch = "main"
 
 [batch]
@@ -174,14 +181,14 @@ dir = "~/d3ts-worktrees/{project}"   # {project} = repo dir name
 # repo = "owner/name"      # auto-detected from git remote
 
 [models]
-opus = "claude-opus-4-7"
+opus = "claude-opus-4-8"    # needs T3's Claude Code CLI >= 2.1.154
 sonnet = "claude-sonnet-4-6"
 haiku = "claude-haiku-4-5"
 
 [model_options]
-context_window = "1m"       # 200k or 1m
-thinking = true
-fast_mode = false
+context_window = "1m"       # 200k or 1m (Opus 4.8/4.7/4.6 + Sonnet 4.6)
+thinking = true             # Haiku 4.5 only
+fast_mode = false           # Opus 4.5/4.6 only
 ```
 
 ### Environment variables
@@ -258,13 +265,13 @@ d3-spawn [flags] <command> [command-flags]
 
 | Flag | Description |
 |------|-------------|
-| `--model MODEL` | Claude model alias or full ID |
+| `--model MODEL` | Claude model alias (`opus`→4.8, `sonnet`, `haiku`) or full ID |
 | `--mode MODE` | Interaction mode: build or plan |
 | `--access LEVEL` | Access level: full, auto-accept, or supervised |
-| `--effort LEVEL` | low, medium, high, or max |
-| `--context-window SIZE` | 200k or 1m |
-| `--thinking / --no-thinking` | Enable/disable thinking |
-| `--fast-mode / --no-fast-mode` | Enable/disable fast mode |
+| `--effort LEVEL` | low, medium, high, xhigh, max, ultracode, or ultrathink |
+| `--context-window SIZE` | 200k or 1m (Opus 4.8/4.7/4.6, Sonnet 4.6) |
+| `--thinking / --no-thinking` | Enable/disable thinking (Haiku 4.5 only) |
+| `--fast-mode / --no-fast-mode` | Enable/disable fast mode (Opus 4.5/4.6 only) |
 | `--batch-size N` | Threads per batch |
 | `--batch-delay M` | Minutes between batches |
 | `--launch-delay S` | Seconds between launches |

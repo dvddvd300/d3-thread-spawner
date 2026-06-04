@@ -36,7 +36,8 @@ def build_parser() -> argparse.ArgumentParser:
     # ── Global flags ──
     parser.add_argument(
         "--model", default=None,
-        help="Claude model alias or full ID (default: opus)",
+        help="Claude model alias or full ID "
+             "(default: opus → claude-opus-4-8; also: sonnet, haiku)",
     )
     parser.add_argument(
         "--mode", choices=["build", "plan"], default=None,
@@ -49,8 +50,12 @@ def build_parser() -> argparse.ArgumentParser:
              "supervised=approve everything (default: full)",
     )
     parser.add_argument(
-        "--effort", choices=["low", "medium", "high", "max"], default=None,
-        help="Effort level (default: high)",
+        "--effort",
+        choices=["low", "medium", "high", "xhigh", "max", "ultracode", "ultrathink"],
+        default=None,
+        help="Reasoning effort (default: high). Availability varies by model — "
+             "xhigh/ultracode/ultrathink need Opus 4.8; unsupported values are "
+             "clamped to the model's default by T3.",
     )
     parser.add_argument(
         "--context-window", choices=["200k", "1m"], default=None,
@@ -58,7 +63,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--thinking", action="store_true", default=None, dest="thinking",
-        help="Enable thinking mode (default: on)",
+        help="Enable thinking mode (default: on; only Haiku 4.5 exposes this)",
     )
     parser.add_argument(
         "--no-thinking", action="store_false", dest="thinking",
@@ -66,7 +71,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--fast-mode", action="store_true", default=None, dest="fast_mode",
-        help="Enable fast mode",
+        help="Enable fast mode (only Opus 4.5/4.6 expose this)",
     )
     parser.add_argument(
         "--no-fast-mode", action="store_false", dest="fast_mode",
