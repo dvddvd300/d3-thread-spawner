@@ -65,6 +65,10 @@ class AgentSettings:
 
     # GitHub
     github_repo: str = ""
+    wait: bool = False                # auto-wait for rate-limit reset
+    wait_max_seconds: int = 300       # cap on auto-wait
+    cache: bool = True                # use the local PR-thread cache
+    cache_dir: str = "~/.config/d3ts/cache"
 
     # Model aliases
     model_aliases: Dict[str, str] = field(default_factory=lambda: {

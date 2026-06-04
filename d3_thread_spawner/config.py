@@ -55,6 +55,10 @@ DEFAULTS = {
     },
     "github": {
         "repo": "",
+        "wait": False,
+        "wait_max_seconds": 300,
+        "cache": True,
+        "cache_dir": "~/.config/d3ts/cache",
     },
     "pr": {
         "max_prompt_chars": 100_000,
@@ -86,6 +90,10 @@ ENV_MAP = {
     "D3TS_T3_PROJECT_ID": ("t3", "project_id"),
     "D3TS_T3_TOKEN": ("t3", "token"),
     "D3TS_GITHUB_REPO": ("github", "repo"),
+    "D3TS_WAIT": ("github", "wait"),
+    "D3TS_WAIT_MAX_SECONDS": ("github", "wait_max_seconds"),
+    "D3TS_CACHE": ("github", "cache"),
+    "D3TS_CACHE_DIR": ("github", "cache_dir"),
     "D3TS_CONTEXT_WINDOW": ("model_options", "context_window"),
     "D3TS_PR_MAX_PROMPT_CHARS": ("pr", "max_prompt_chars"),
 }
@@ -162,6 +170,8 @@ def _apply_cli(config: dict, cli_args) -> dict:
         ("model_options", "thinking"): "thinking",
         ("model_options", "fast_mode"): "fast_mode",
         ("pr", "max_prompt_chars"): "max_prompt_chars",
+        ("github", "wait"): "wait",
+        ("github", "wait_max_seconds"): "wait_max_seconds",
     }
     for (section, key), attr in cli_map.items():
         val = getattr(cli_args, attr, None)
@@ -285,6 +295,7 @@ def load_config(cli_args=None) -> AgentSettings:
     t3 = config.get("t3", {})
     mo = config.get("model_options", {})
     pr_cfg = config.get("pr", {})
+    gh_cfg = config.get("github", {})
 
     return AgentSettings(
         model=gen.get("model", "opus"),
@@ -307,6 +318,12 @@ def load_config(cli_args=None) -> AgentSettings:
         cookies_path=cookies_path,
         worktree_dir=wt_dir,
         github_repo=gh_repo,
+        wait=gh_cfg.get("wait", False),
+        wait_max_seconds=gh_cfg.get("wait_max_seconds", 300),
+        cache=gh_cfg.get("cache", True),
+        cache_dir=os.path.normpath(os.path.expanduser(
+            gh_cfg.get("cache_dir", "~/.config/d3ts/cache")
+        )),
         model_aliases=config.get("models", DEFAULTS["models"]),
         max_prompt_chars=pr_cfg.get("max_prompt_chars", 100_000),
     )

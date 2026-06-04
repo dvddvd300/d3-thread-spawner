@@ -2,10 +2,17 @@
 
 from __future__ import annotations
 
-from typing import List
+from typing import Dict, List
 
 from ..batch import launch_batch
-from ..github import GitHubRateLimitError, fetch_open_prs, fetch_pr_info
+from ..github import (
+    GitHubRateLimitError,
+    fetch_open_prs,
+    fetch_prs_info,
+    graphql_budget_low,
+    reviewer_matches,
+    set_graphql_disabled,
+)
 from ..models import AgentSettings, WorkItem
 from ..prompts import (
     build_pr_review_chunk_prompt,
@@ -28,8 +35,23 @@ def cmd_pr(args, settings: AgentSettings):
     except GitHubRateLimitError as e:
         print()
         log("🚫", str(e))
-        log("💡", "Wait for the limit to reset, then retry.")
+        log("💡", "Wait for the limit to reset, then retry (or pass --wait).")
         log("   ", "Check status: gh api rate_limit --jq '.resources.graphql'")
+
+
+def _build_resume_command(args, skipped: List[int]) -> str:
+    """Compose a ready-to-paste command that re-runs only the skipped PRs."""
+    parts = ["d3-spawn pr", " ".join(str(n) for n in skipped)]
+    if args.reviewer:
+        parts.append(f"--reviewer {args.reviewer}")
+    if args.include_resolved:
+        parts.append("--include-resolved")
+    if args.include_outdated:
+        parts.append("--include-outdated")
+    if args.per_thread:
+        parts.append("--per-thread")
+    parts.append("--wait")
+    return " ".join(parts)
 
 
 def _cmd_pr(args, settings: AgentSettings):
@@ -37,8 +59,16 @@ def _cmd_pr(args, settings: AgentSettings):
     owner = settings.github_owner
     name = settings.github_name
 
+    # Reset the per-process GraphQL latch so a previous run can't bleed into this one.
+    set_graphql_disabled(False)
+
+    # --no-cache overrides config.
+    if getattr(args, "no_cache", False):
+        settings.cache = False
+
     # ── Determine which PRs to process ──
     pr_numbers: List[int] = []
+    pr_hints: Dict[int, dict] = {}
 
     if args.pr_numbers:
         pr_numbers = args.pr_numbers
@@ -49,6 +79,7 @@ def _cmd_pr(args, settings: AgentSettings):
             log("⚠️ ", "No open PRs found.")
             return
         pr_numbers = [p["number"] for p in prs]
+        pr_hints = {p["number"]: p for p in prs}
         log("✅", f"Found {len(prs)} open PR(s):")
         for p in prs:
             print(f"  #{p['number']} — {p['title']}")
@@ -57,32 +88,35 @@ def _cmd_pr(args, settings: AgentSettings):
         log("❌", "Specify PR numbers or use --open [--mine].")
         return
 
-    # ── Fetch review threads and build work items ──
+    # ── Preflight: if the GraphQL budget is already low, go straight to REST ──
+    if graphql_budget_low():
+        log("⚠️ ", "GraphQL budget low — using REST API for all PRs "
+                   "(resolution status unavailable; showing all threads).")
+        set_graphql_disabled(True)
+
+    # ── Fetch review threads for all PRs (batched + cached) ──
+    log("📥", f"Fetching review threads for {len(pr_numbers)} PR(s)...")
+    infos, skipped = fetch_prs_info(
+        owner, name, pr_numbers,
+        include_resolved=args.include_resolved,
+        include_outdated=args.include_outdated,
+        reviewer=args.reviewer,
+        settings=settings,
+        pr_hints=pr_hints,
+    )
+
+    # ── Build work items ──
     items: List[WorkItem] = []
 
     for pr_num in pr_numbers:
-        log("📥", f"PR #{pr_num}: fetching review threads...")
-
-        try:
-            pr = fetch_pr_info(
-                owner, name, pr_num,
-                include_resolved=args.include_resolved,
-                include_outdated=args.include_outdated,
-            )
-        except GitHubRateLimitError:
-            raise  # propagate to top-level handler
-        except Exception as e:
-            log("❌", f"PR #{pr_num}: failed to fetch — {e}")
-            continue
+        pr = infos.get(pr_num)
+        if pr is None:
+            continue  # skipped (rate-limited) — reported below
 
         # Filter by reviewer if specified
         threads = pr.threads
         if args.reviewer:
-            reviewer_lower = args.reviewer.lower().replace("[bot]", "")
-            threads = [
-                t for t in threads
-                if reviewer_lower in t.reviewer.lower()
-            ]
+            threads = [t for t in threads if reviewer_matches(t.reviewer, args.reviewer)]
 
         if not threads:
             log("⚠️ ", f"PR #{pr_num}: no matching unresolved threads")
@@ -143,13 +177,23 @@ def _cmd_pr(args, settings: AgentSettings):
                         worktree_from=pr.branch,
                     ))
 
+    # ── Partial-results notice ──
+    if skipped:
+        print()
+        log("🚫", f"Rate limit hit — {len(skipped)} PR(s) not fetched: "
+                  f"{', '.join('#' + str(n) for n in skipped)}")
+        log("💡", "Resume the rest once the limit resets:")
+        log("   ", _build_resume_command(args, skipped))
+
     if not items:
-        log("⚠️ ", "No work items to launch.")
+        if not skipped:
+            log("⚠️ ", "No work items to launch.")
         return
 
     print()
     if not settings.dry_run and len(items) > 1:
-        confirm = input(f"Launch {len(items)} thread(s)? [y/N] ").strip()
+        suffix = " (partial — rate limit hit)" if skipped else ""
+        confirm = input(f"Launch {len(items)} thread(s){suffix}? [y/N] ").strip()
         if confirm.lower() != "y":
             log("⚠️ ", "Aborted.")
             return

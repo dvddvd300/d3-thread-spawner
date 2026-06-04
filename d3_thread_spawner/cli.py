@@ -205,6 +205,20 @@ def build_parser() -> argparse.ArgumentParser:
         "--include-outdated", action="store_true",
         help="Include outdated threads (code has changed since comment)",
     )
+    p_pr.add_argument(
+        "--wait", action="store_true", default=None,
+        help="On GitHub rate-limit, sleep until the budget resets and resume "
+             "(stays on GraphQL, preserving resolved/outdated filtering)",
+    )
+    p_pr.add_argument(
+        "--wait-max-seconds", type=int, default=None,
+        help="Cap for --wait; if the reset is further away, fall back to REST "
+             "instead of sleeping (default: 300)",
+    )
+    p_pr.add_argument(
+        "--no-cache", action="store_true",
+        help="Ignore the local PR-thread cache and re-fetch everything",
+    )
 
     # ── status ──
     subs.add_parser(

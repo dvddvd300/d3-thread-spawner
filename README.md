@@ -118,7 +118,31 @@ d3-spawn pr 58 --per-thread
 
 # Include resolved/outdated threads
 d3-spawn pr 58 --include-resolved --include-outdated
+
+# Wait out a short rate-limit reset and resume (instead of aborting)
+d3-spawn pr --open --mine --reviewer coderabbitai --wait
+
+# Ignore the local cache and re-fetch everything
+d3-spawn pr --open --no-cache
 ```
+
+**Rate limits & caching.** Review threads are fetched with batched GraphQL
+queries and cached locally (keyed by each PR's `updatedAt`), so repeated runs
+only re-fetch PRs that actually changed. When GraphQL is rate-limited the tool
+automatically falls back to the REST API (a separate budget); `--wait` instead
+sleeps until the GraphQL budget resets (capped by `--wait-max-seconds`, default
+300) and resumes, which preserves resolved/outdated filtering. If a hard limit is
+hit mid-run, already-fetched PRs are still launched and a resume command for the
+rest is printed.
+
+| `pr` flag | Description |
+|---|---|
+| `--reviewer LOGIN` | Only threads whose author matches `LOGIN` (`[bot]` suffix ignored) |
+| `--per-thread` | One agent per thread (default: one per PR) |
+| `--include-resolved` / `--include-outdated` | Include resolved / outdated threads |
+| `--wait` | On rate-limit, sleep until reset and resume on GraphQL |
+| `--wait-max-seconds N` | Cap for `--wait`; beyond it, fall back to REST (default 300) |
+| `--no-cache` | Ignore the local PR-thread cache and re-fetch |
 
 ### `status` — Show active threads
 
@@ -205,6 +229,10 @@ fast_mode = false           # Opus 4.5/4.6 only
 | `D3TS_BATCH_SIZE` | Default batch size |
 | `D3TS_INITIAL_WAIT` | Minutes to wait before first batch |
 | `D3TS_GITHUB_REPO` | GitHub repo (owner/name) |
+| `D3TS_WAIT` | Auto-wait for rate-limit reset (true/false) |
+| `D3TS_WAIT_MAX_SECONDS` | Cap for auto-wait (default 300) |
+| `D3TS_CACHE` | Use the local PR-thread cache (true/false) |
+| `D3TS_CACHE_DIR` | PR-thread cache location |
 
 ## Batch Processing
 
