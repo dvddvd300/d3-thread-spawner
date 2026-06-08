@@ -12,6 +12,19 @@ from .config import load_config
 from .util import log, set_verbose
 
 
+def _add_conflict_strategy_flags(p: argparse.ArgumentParser) -> None:
+    """Add mutually-exclusive --merge/--rebase flags to a conflict-aware parser."""
+    grp = p.add_mutually_exclusive_group()
+    grp.add_argument(
+        "--merge", action="store_true",
+        help="Resolve by merging base into the branch (no force-push; default)",
+    )
+    grp.add_argument(
+        "--rebase", action="store_true",
+        help="Resolve by rebasing the branch onto base (force-pushes with lease)",
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="d3-spawn",
@@ -24,6 +37,8 @@ def build_parser() -> argparse.ArgumentParser:
               %(prog)s spawn --from-file tasks.jsonl --batch-size 10
               %(prog)s pr 58 --reviewer coderabbitai
               %(prog)s pr --open --mine
+              %(prog)s triage
+              %(prog)s conflicts
               %(prog)s status
               %(prog)s config --init
         """),
@@ -220,6 +235,50 @@ def build_parser() -> argparse.ArgumentParser:
         help="Ignore the local PR-thread cache and re-fetch everything",
     )
 
+    # ── triage ──
+    p_triage = subs.add_parser(
+        "triage",
+        help="Classify open PRs (conflicts, CI, reviews, ready)",
+        description=(
+            "Show a grouped status report for open PRs — merge conflicts, failing "
+            "CI, changes requested, behind base, awaiting review, ready to merge — "
+            "and optionally launch conflict-resolution threads."
+        ),
+    )
+    p_triage.add_argument(
+        "pr_numbers", nargs="*", type=int,
+        help="Specific PR numbers to triage (default: all open PRs)",
+    )
+    p_triage.add_argument(
+        "--mine", action="store_true",
+        help="Only my PRs",
+    )
+    p_triage.add_argument(
+        "--resolve-conflicts", action="store_true",
+        help="After the report, spawn agents to resolve every conflicting PR",
+    )
+    _add_conflict_strategy_flags(p_triage)
+
+    # ── conflicts ──
+    p_conflicts = subs.add_parser(
+        "conflicts",
+        help="Resolve merge conflicts across all PR branches",
+        description=(
+            "Find open PRs that conflict with their base branch (or the PRs you "
+            "name) and spawn one autonomous T3 thread per branch to merge in the "
+            "base, resolve the conflicts, verify, and push."
+        ),
+    )
+    p_conflicts.add_argument(
+        "pr_numbers", nargs="*", type=int,
+        help="Specific PR numbers to resolve (default: all conflicting open PRs)",
+    )
+    p_conflicts.add_argument(
+        "--mine", action="store_true",
+        help="Only my PRs",
+    )
+    _add_conflict_strategy_flags(p_conflicts)
+
     # ── status ──
     subs.add_parser(
         "status",
@@ -278,6 +337,8 @@ def main() -> int:
 
     from .commands.spawn import cmd_spawn
     from .commands.pr import cmd_pr
+    from .commands.triage import cmd_triage
+    from .commands.conflicts import cmd_conflicts
     from .commands.status import cmd_status
     from .commands.clean import cmd_clean
     from .commands.config_cmd import cmd_config
@@ -285,6 +346,8 @@ def main() -> int:
     handlers = {
         "spawn": cmd_spawn,
         "pr": cmd_pr,
+        "triage": cmd_triage,
+        "conflicts": cmd_conflicts,
         "status": cmd_status,
         "clean": cmd_clean,
         "config": cmd_config,

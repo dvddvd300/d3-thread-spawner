@@ -8,7 +8,7 @@ import textwrap
 from collections import defaultdict
 from typing import Dict, List, Optional
 
-from .models import PRInfo, ReviewThread
+from .models import PRInfo, PRStatus, ReviewThread
 
 
 # ── Built-in Templates ──────────────────────────────────────────────────────
@@ -202,6 +202,130 @@ WORKFLOW:
 
 Begin now."""
 
+BUILTIN_CONFLICT_MERGE = """\
+You are an autonomous engineer resolving MERGE CONFLICTS on a pull request.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PR:     #{pr_number} — {pr_title}
+BRANCH: {pr_branch}  (your worktree is checked out here)
+BASE:   {base_branch}
+URL:    {pr_url}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+GitHub reports that {pr_branch} CONFLICTS with {base_branch}. Your job is to
+merge {base_branch} into {pr_branch}, resolve every conflict correctly, verify,
+and push — autonomously. Do NOT wait for human approval unless a conflict is
+genuinely ambiguous (see Step 2).
+
+WORKFLOW:
+
+  STEP 0 — SYNC:
+    - `git fetch origin {base_branch} {pr_branch}`
+    - This is a fresh worktree; discard any stray uncommitted changes:
+      `git restore .` then `git clean -fd`.
+    - Make sure you are on {pr_branch} and it matches origin:
+      `git switch {pr_branch}` (it tracks origin/{pr_branch}), then
+      `git pull --ff-only origin {pr_branch}`.
+    - Confirm `git status` is clean and HEAD == origin/{pr_branch}.
+
+  STEP 1 — MERGE THE BASE:
+    - `git merge --no-edit origin/{base_branch}`
+    - It will stop with conflicts. List every conflicted file:
+      `git diff --name-only --diff-filter=U`.
+    - If git reports NO conflicts (already merges cleanly), there is nothing to
+      do — say so and STOP without committing an empty/no-op change.
+
+  STEP 2 — RESOLVE EACH CONFLICT:
+    For every conflicted file:
+      a) Read the file and inspect BOTH sides of each `<<<<<<< / ======= / >>>>>>>`
+         marker (ours = the PR change, theirs = {base_branch}).
+      b) Use `git log` / `git blame` if needed to understand the INTENT of each
+         side. Resolve so BOTH intents are preserved — never blindly pick a side
+         or delete the other's work.
+      c) Remove ALL conflict markers, then `git add <file>`.
+    - If a conflict is genuinely ambiguous and you cannot determine the correct
+      resolution with confidence, STOP and report the exact file, lines, and the
+      competing intents. Do NOT guess.
+
+  STEP 3 — VERIFY:
+    - If a CLAUDE.md exists at the repo root, follow it and use its test/lint
+      commands. Otherwise detect and run the project's test suite + linter, and
+      build if applicable.
+    - No conflict markers remain: `git diff --check` reports nothing and
+      `git grep -nE '^(<<<<<<<|>>>>>>>)'` returns nothing. (The `=======`
+      separator alone is intentionally not matched — it collides with Markdown
+      and banner underlines.)
+    - If verification FAILS, fix the cause. If you cannot, STOP and report —
+      do NOT push broken code.
+
+  STEP 4 — COMMIT & PUSH:
+    - Complete the merge: `git commit --no-edit` (default message
+      "Merge {base_branch} into {pr_branch}" is fine).
+    - `git push origin {pr_branch}` (same branch — a merge needs no force-push).
+
+Begin with Step 0 now."""
+
+BUILTIN_CONFLICT_REBASE = """\
+You are an autonomous engineer resolving MERGE CONFLICTS on a pull request by
+REBASING it onto its base branch.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PR:     #{pr_number} — {pr_title}
+BRANCH: {pr_branch}  (your worktree is checked out here)
+BASE:   {base_branch}
+URL:    {pr_url}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+GitHub reports that {pr_branch} CONFLICTS with {base_branch}. Your job is to
+rebase {pr_branch} onto {base_branch}, resolve every conflict correctly, verify,
+and force-push (with lease) — autonomously. Do NOT wait for human approval
+unless a conflict is genuinely ambiguous (see Step 2).
+
+WORKFLOW:
+
+  STEP 0 — SYNC:
+    - `git fetch origin {base_branch} {pr_branch}`
+    - This is a fresh worktree; discard any stray uncommitted changes:
+      `git restore .` then `git clean -fd`.
+    - Be on {pr_branch} matching origin: `git switch {pr_branch}` then
+      `git pull --ff-only origin {pr_branch}`. Confirm `git status` is clean.
+
+  STEP 1 — REBASE ONTO THE BASE:
+    - Record the current tip first: `git rev-parse HEAD`.
+    - `git rebase origin/{base_branch}`
+    - The rebase will pause on each conflicting commit.
+    - If the rebase completes with NO conflicts to resolve AND the tip is
+      unchanged (already on top of {base_branch}), there is nothing to do —
+      say so and STOP. Do NOT force-push an unchanged branch.
+
+  STEP 2 — RESOLVE EACH CONFLICT (per paused commit):
+    For every conflicted file in the current step:
+      a) Inspect BOTH sides of each conflict marker. During a rebase, "ours" is
+         {base_branch} and "theirs" is the PR commit being replayed — do not let
+         that invert your intent; preserve the PR's change AND the base change.
+      b) Use `git log` / `git blame` to understand intent. Resolve so both are
+         preserved — never blindly pick a side.
+      c) Remove ALL conflict markers, `git add <file>`, then `git rebase --continue`.
+    - If a conflict is genuinely ambiguous, run `git rebase --abort`, then STOP
+      and report the exact file, lines, and competing intents. Do NOT guess.
+
+  STEP 3 — VERIFY (after the rebase completes):
+    - If a CLAUDE.md exists at the repo root, follow it and use its test/lint
+      commands. Otherwise detect and run tests + linter, and build if applicable.
+    - No conflict markers remain: `git diff --check` reports nothing and
+      `git grep -nE '^(<<<<<<<|>>>>>>>)'` returns nothing. (The `=======`
+      separator alone is intentionally not matched — it collides with Markdown
+      and banner underlines.)
+    - If verification FAILS, fix it; if you cannot, STOP and report — do not push.
+
+  STEP 4 — FORCE-PUSH (with lease):
+    - Only if the rebase actually rewrote the branch (Step 1):
+      `git push --force-with-lease origin {pr_branch}`
+      (a rebase rewrites history, so a normal push is rejected; --force-with-lease
+      refuses to clobber commits you haven't seen).
+
+Begin with Step 0 now."""
+
 
 # ── Template Loading ────────────────────────────────────────────────────────
 
@@ -364,6 +488,22 @@ def build_pr_thread_prompt(
         "thread_body": first.body,
         "thread_followups": followups,
         "thread_ai_section": ai_section,
+    })
+
+
+def build_conflict_resolution_prompt(pr: PRStatus, strategy: str = "merge") -> str:
+    """Build a prompt instructing an agent to resolve a PR's merge conflicts.
+
+    ``strategy`` is "merge" (merge base into the PR branch; no force-push) or
+    "rebase" (rebase the PR branch onto base; force-push with lease).
+    """
+    template = BUILTIN_CONFLICT_REBASE if strategy == "rebase" else BUILTIN_CONFLICT_MERGE
+    return render_prompt(template, {
+        "pr_number": str(pr.number),
+        "pr_title": pr.title,
+        "pr_branch": pr.branch,
+        "base_branch": pr.base_branch,
+        "pr_url": pr.url,
     })
 
 

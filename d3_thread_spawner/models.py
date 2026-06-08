@@ -70,6 +70,9 @@ class AgentSettings:
     cache: bool = True                # use the local PR-thread cache
     cache_dir: str = "~/.config/d3ts/cache"
 
+    # Conflict resolution
+    conflict_strategy: str = "merge"  # "merge" (default) or "rebase"
+
     # Model aliases
     model_aliases: Dict[str, str] = field(default_factory=lambda: {
         "opus": "claude-opus-4-8",
@@ -175,3 +178,44 @@ class PRInfo:
     base_branch: str
     url: str
     threads: List[ReviewThread] = field(default_factory=list)
+
+
+@dataclass
+class PRStatus:
+    """High-level mergeability / CI / review status of a pull request.
+
+    Powers the ``triage`` report and the ``conflicts`` command. Populated from a
+    single ``gh pr list``/``gh pr view --json`` call (GraphQL under the hood).
+    """
+
+    number: int
+    title: str
+    branch: str                       # headRefName
+    base_branch: str                  # baseRefName
+    url: str
+    author: str = ""
+    state: str = "OPEN"               # OPEN | CLOSED | MERGED
+    is_draft: bool = False
+    mergeable: str = "UNKNOWN"        # MERGEABLE | CONFLICTING | UNKNOWN
+    merge_state: str = "UNKNOWN"      # GitHub mergeStateStatus (BEHIND, CLEAN, ...)
+    review_decision: str = ""         # APPROVED | CHANGES_REQUESTED | REVIEW_REQUIRED | ""
+    ci_state: str = "NONE"            # SUCCESS | FAILURE | PENDING | NONE
+    failing_checks: List[str] = field(default_factory=list)
+    labels: List[str] = field(default_factory=list)
+    updated_at: str = ""
+    additions: int = 0
+    deletions: int = 0
+    changed_files: int = 0
+
+    @property
+    def is_open(self) -> bool:
+        return self.state == "OPEN"
+
+    @property
+    def conflicting(self) -> bool:
+        """True when GitHub reports the PR cannot be merged cleanly."""
+        return self.mergeable == "CONFLICTING"
+
+    @property
+    def ci_failing(self) -> bool:
+        return self.ci_state == "FAILURE"

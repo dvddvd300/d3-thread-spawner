@@ -28,6 +28,9 @@ dir = "~/d3ts-worktrees/{project}" # {project} = repo directory name
 [github]
 # repo = "owner/name"             # auto-detected from git remote origin
 
+[conflicts]
+strategy = "merge"                 # "merge" (base into branch) or "rebase" (onto base)
+
 [models]
 # Define aliases for model IDs. Use these with --model flag.
 # Opus 4.8 requires T3 Code's bundled Claude Code CLI >= 2.1.154.

@@ -63,6 +63,9 @@ DEFAULTS = {
     "pr": {
         "max_prompt_chars": 100_000,
     },
+    "conflicts": {
+        "strategy": "merge",        # "merge" or "rebase"
+    },
     "models": {
         "opus": "claude-opus-4-8",
         "sonnet": "claude-sonnet-4-6",
@@ -96,6 +99,7 @@ ENV_MAP = {
     "D3TS_CACHE_DIR": ("github", "cache_dir"),
     "D3TS_CONTEXT_WINDOW": ("model_options", "context_window"),
     "D3TS_PR_MAX_PROMPT_CHARS": ("pr", "max_prompt_chars"),
+    "D3TS_CONFLICT_STRATEGY": ("conflicts", "strategy"),
 }
 
 
@@ -296,6 +300,7 @@ def load_config(cli_args=None) -> AgentSettings:
     mo = config.get("model_options", {})
     pr_cfg = config.get("pr", {})
     gh_cfg = config.get("github", {})
+    conflicts_cfg = config.get("conflicts", {})
 
     return AgentSettings(
         model=gen.get("model", "opus"),
@@ -326,6 +331,7 @@ def load_config(cli_args=None) -> AgentSettings:
         )),
         model_aliases=config.get("models", DEFAULTS["models"]),
         max_prompt_chars=pr_cfg.get("max_prompt_chars", 100_000),
+        conflict_strategy=conflicts_cfg.get("strategy", "merge"),
     )
 
 

@@ -40,6 +40,12 @@ TEMPLATE = """\
 [github]
 # repo = ""                   # owner/name (auto-detected from git remote)
 
+[pr]
+# max_prompt_chars = 100000   # split bundled PR reviews above this size
+
+[conflicts]
+# strategy = "merge"          # "merge" (base into branch) or "rebase" (onto base)
+
 [models]
 # Define model aliases. The key is what you pass to --model.
 # Opus 4.8 requires T3 Code's bundled Claude Code CLI >= 2.1.154.

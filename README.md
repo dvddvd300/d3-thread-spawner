@@ -13,6 +13,8 @@ Programmatic [T3 Code](https://t3.chat) thread launcher. Spawn Claude Code agent
 - **Branch management** — work on existing branches or create new ones (with fork support)
 - **Batch processing** — launch 30+ tasks with configurable batch size and delays
 - **PR review** — fetch GitHub PR review threads and spawn agents to address them
+- **PR triage** — one-shot status report across all open PRs (conflicts, CI, reviews, ready)
+- **Conflict resolution** — resolve merge conflicts across every conflicting branch with one command
 - **Auto-detection** — T3 connection, project ID, and GitHub repo detected automatically
 - **Config system** — TOML config files (global + per-project) with env var and CLI overrides
 
@@ -21,7 +23,7 @@ Programmatic [T3 Code](https://t3.chat) thread launcher. Spawn Claude Code agent
 - Python 3.11+ (uses `tomllib` from stdlib)
 - [T3 Code](https://t3.chat) running locally
 - `git` CLI
-- `gh` CLI (only for the `pr` command)
+- `gh` CLI (for the `pr`, `triage`, and `conflicts` commands)
 - No pip dependencies — stdlib only
 
 > **Models & effort.** The `opus` alias maps to **Claude Opus 4.8**, which needs
@@ -144,6 +146,72 @@ rest is printed.
 | `--wait-max-seconds N` | Cap for `--wait`; beyond it, fall back to REST (default 300) |
 | `--no-cache` | Ignore the local PR-thread cache and re-fetch |
 
+### `triage` — Classify open PRs at a glance
+
+Prints a grouped status report for every open PR — merge conflicts, failing CI,
+changes requested, behind base, awaiting review, ready to merge, draft — from a
+single `gh` call. Read-only by default; add `--resolve-conflicts` to also spawn
+conflict-resolution threads for the conflicting ones.
+
+```bash
+# Status report for all open PRs
+d3-spawn triage
+
+# Only my PRs
+d3-spawn triage --mine
+
+# Specific PRs
+d3-spawn triage 58 61
+
+# Report, then resolve every conflicting PR in one go
+d3-spawn triage --resolve-conflicts
+```
+
+Example output:
+
+```
+🔴 CONFLICTS (2)
+    #58 ← feature/auth   Fix auth timeout         @alice   ci:✅  rev:✋
+    #61 ← feature/pages  Add pagination           @bob     ci:❌
+🟢 READY TO MERGE (3)
+    ...
+
+  Summary: 2 conflicts · 1 ci failing · 3 ready to merge
+💡 Resolve all 2 conflict(s): d3-spawn conflicts
+```
+
+### `conflicts` — Resolve merge conflicts across all branches
+
+Finds open PRs that conflict with their base branch (or the PRs you name) and
+spawns one autonomous T3 thread per branch. Each agent merges the base in,
+resolves the conflicts (preserving both sides' intent), runs tests/lint, and
+pushes — stopping only if a conflict is genuinely ambiguous or verification
+fails. One command, all the branches.
+
+```bash
+# Resolve conflicts on every conflicting open PR (merge strategy)
+d3-spawn conflicts
+
+# Only my PRs
+d3-spawn conflicts --mine
+
+# Specific PRs
+d3-spawn conflicts 58 61
+
+# Rebase onto base instead of merging (force-pushes with lease)
+d3-spawn conflicts --rebase
+```
+
+| `conflicts` / `triage` flag | Description |
+|---|---|
+| `--mine` | Only my PRs |
+| `--merge` | Merge base into the branch (no force-push) — the default |
+| `--rebase` | Rebase the branch onto base (force-pushes with `--force-with-lease`) |
+| `--resolve-conflicts` | (`triage` only) launch conflict resolution after the report |
+
+GitHub computes mergeability asynchronously, so PRs that report `UNKNOWN` are
+re-checked once before the conflicting/clean split is finalized.
+
 ### `status` — Show active threads
 
 ```bash
@@ -204,6 +272,9 @@ dir = "~/d3ts-worktrees/{project}"   # {project} = repo dir name
 [github]
 # repo = "owner/name"      # auto-detected from git remote
 
+[conflicts]
+strategy = "merge"          # "merge" (base into branch) or "rebase" (onto base)
+
 [models]
 opus = "claude-opus-4-8"    # needs T3's Claude Code CLI >= 2.1.154
 sonnet = "claude-sonnet-4-6"
@@ -233,6 +304,7 @@ fast_mode = false           # Opus 4.5/4.6 only
 | `D3TS_WAIT_MAX_SECONDS` | Cap for auto-wait (default 300) |
 | `D3TS_CACHE` | Use the local PR-thread cache (true/false) |
 | `D3TS_CACHE_DIR` | PR-thread cache location |
+| `D3TS_CONFLICT_STRATEGY` | Conflict resolution strategy (`merge` or `rebase`) |
 
 ## Batch Processing
 

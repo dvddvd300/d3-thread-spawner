@@ -24,7 +24,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from . import cache as _cache
-from .models import AgentSettings, PRInfo, ReviewComment, ReviewThread
+from .models import AgentSettings, PRInfo, PRStatus, ReviewComment, ReviewThread
 from .util import iso_now, log, log_verbose, run
 
 
@@ -819,3 +819,151 @@ def _fetch_open_prs_rest(repo: str, mine_only: bool = False) -> List[Dict]:
         page += 1
 
     return all_prs
+
+
+# ── PR status (mergeability / CI / review) for triage + conflicts ───────────────
+
+# Rich per-PR fields available via `gh pr {list,view} --json` (GraphQL-backed).
+# mergeable / mergeStateStatus / reviewDecision / statusCheckRollup are NOT
+# exposed by the REST pulls API, so this path is GraphQL-only (a clear
+# rate-limit error is raised rather than a degraded REST fallback).
+_PR_STATUS_FIELDS = (
+    "number,title,headRefName,baseRefName,url,author,updatedAt,state,isDraft,"
+    "mergeable,mergeStateStatus,reviewDecision,statusCheckRollup,labels,"
+    "additions,deletions,changedFiles"
+)
+
+# statusCheckRollup conclusions/states that mean a check failed.
+_CI_FAIL = {"FAILURE", "ERROR", "TIMED_OUT", "CANCELLED", "STARTUP_FAILURE", "ACTION_REQUIRED"}
+_CI_PENDING = {"PENDING", "QUEUED", "IN_PROGRESS", "WAITING", "REQUESTED", "EXPECTED"}
+
+
+def _derive_ci_state(rollup: Optional[List[dict]]) -> Tuple[str, List[str]]:
+    """Reduce a ``statusCheckRollup`` list to ``(state, failing_check_names)``.
+
+    state is one of SUCCESS / FAILURE / PENDING / NONE. A run is failing if any
+    check failed; otherwise pending if any check is still running; otherwise
+    success if there were checks at all; else NONE.
+    """
+    if not rollup:
+        return "NONE", []
+
+    failing: List[str] = []
+    pending = False
+    for c in rollup:
+        # CheckRun uses status/conclusion; StatusContext uses state.
+        conclusion = (c.get("conclusion") or "").upper()
+        status = (c.get("status") or "").upper()
+        state = (c.get("state") or "").upper()
+        name = c.get("name") or c.get("context") or "check"
+
+        if conclusion in _CI_FAIL or state in _CI_FAIL:
+            failing.append(name)
+        elif (not conclusion and status in _CI_PENDING) or state in _CI_PENDING:
+            pending = True
+
+    if failing:
+        return "FAILURE", failing
+    if pending:
+        return "PENDING", []
+    return "SUCCESS", []
+
+
+def _parse_pr_status(data: dict) -> PRStatus:
+    """Build a PRStatus from a ``gh pr {list,view} --json`` object."""
+    ci_state, failing = _derive_ci_state(data.get("statusCheckRollup"))
+    author = (data.get("author") or {}).get("login", "") or ""
+    labels = [lb.get("name", "") for lb in (data.get("labels") or []) if lb.get("name")]
+    return PRStatus(
+        number=data["number"],
+        title=data.get("title", ""),
+        branch=data.get("headRefName", ""),
+        base_branch=data.get("baseRefName", ""),
+        url=data.get("url", ""),
+        author=author,
+        state=(data.get("state") or "OPEN").upper(),
+        is_draft=bool(data.get("isDraft")),
+        mergeable=(data.get("mergeable") or "UNKNOWN").upper(),
+        merge_state=(data.get("mergeStateStatus") or "UNKNOWN").upper(),
+        review_decision=(data.get("reviewDecision") or "").upper(),
+        ci_state=ci_state,
+        failing_checks=failing,
+        labels=labels,
+        updated_at=data.get("updatedAt", "") or "",
+        additions=int(data.get("additions") or 0),
+        deletions=int(data.get("deletions") or 0),
+        changed_files=int(data.get("changedFiles") or 0),
+    )
+
+
+def _gh_json(cmd: List[str]) -> Any:
+    """Run a ``gh`` command expected to emit JSON, mapping rate limits cleanly."""
+    try:
+        return json.loads(run(cmd).stdout)
+    except subprocess.CalledProcessError as e:
+        _check_rate_limit_error(e)
+        raise
+
+
+def fetch_prs_status(
+    repo: str,
+    *,
+    pr_numbers: Optional[List[int]] = None,
+    mine_only: bool = False,
+) -> List[PRStatus]:
+    """Fetch mergeability / CI / review status for PRs.
+
+    With ``pr_numbers`` each PR is fetched via ``gh pr view`` (which resolves a
+    PR regardless of state — callers must gate on ``PRStatus.is_open`` before
+    acting); otherwise all open PRs are listed via ``gh pr list``. Raises
+    ``GitHubRateLimitError`` if the GraphQL budget is exhausted (the rich fields
+    have no REST equivalent).
+    """
+    if pr_numbers:
+        out: List[PRStatus] = []
+        for n in pr_numbers:
+            data = _gh_json([
+                "gh", "pr", "view", str(n),
+                "--repo", repo, "--json", _PR_STATUS_FIELDS,
+            ])
+            out.append(_parse_pr_status(data))
+        return out
+
+    cmd = [
+        "gh", "pr", "list",
+        "--repo", repo,
+        "--state", "open",
+        "--json", _PR_STATUS_FIELDS,
+        "--limit", "100",
+    ]
+    if mine_only:
+        cmd.extend(["--author", "@me"])
+    return [_parse_pr_status(p) for p in _gh_json(cmd)]
+
+
+def refresh_unknown_mergeable(
+    repo: str, prs: List[PRStatus], *, attempts: int = 2, delay: float = 2.0
+) -> List[PRStatus]:
+    """Re-fetch PRs whose mergeability is UNKNOWN (GitHub computes it async).
+
+    GitHub returns ``mergeable: UNKNOWN`` while it recomputes the merge in the
+    background; a short retry usually resolves it. Returns a new list with the
+    refreshed PRs substituted in (best-effort: a failed refresh keeps the old
+    value). Order is preserved.
+    """
+    by_num = {p.number: p for p in prs}
+    for _ in range(max(0, attempts)):
+        pending = [n for n, p in by_num.items() if p.mergeable == "UNKNOWN"]
+        if not pending:
+            break
+        time.sleep(delay)
+        for n in pending:
+            try:
+                data = _gh_json([
+                    "gh", "pr", "view", str(n),
+                    "--repo", repo, "--json", _PR_STATUS_FIELDS,
+                ])
+                by_num[n] = _parse_pr_status(data)
+            except (subprocess.CalledProcessError, GitHubRateLimitError):
+                pass  # best-effort; keep the stale value
+    return [by_num[p.number] for p in prs]
