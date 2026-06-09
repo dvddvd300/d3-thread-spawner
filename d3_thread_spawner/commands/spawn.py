@@ -18,6 +18,9 @@ def _load_jsonl(path: str, settings: AgentSettings) -> List[WorkItem]:
     Each line is a JSON object with fields:
       name (required), prompt or prompt_file (one required),
       branch (existing) or new_branch + optional fork_from,
+      raw (optional bool, default false — send the prompt verbatim instead of
+        wrapping it in the default spawn template; use for prompts that already
+        contain their own full workflow),
       optional overrides: model, mode, effort
     """
     expanded = os.path.expanduser(path)
@@ -95,8 +98,12 @@ def _load_jsonl(path: str, settings: AgentSettings) -> List[WorkItem]:
                 create_branch = True
                 worktree_from = None
 
-            # Wrap with default template if prompt looks like a plain task
-            wrapped_prompt = build_spawn_prompt(prompt_text)
+            # Wrap with the default template unless the task supplies a
+            # ready-to-send prompt (raw=true sends prompt_text verbatim).
+            if entry.get("raw"):
+                wrapped_prompt = prompt_text
+            else:
+                wrapped_prompt = build_spawn_prompt(prompt_text)
 
             items.append(WorkItem(
                 name=name,
