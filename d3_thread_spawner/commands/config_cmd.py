@@ -45,6 +45,14 @@ TEMPLATE = """\
 
 [conflicts]
 # strategy = "merge"          # "merge" (base into branch) or "rebase" (onto base)
+# Batch pacing for the `conflicts` command (and `triage --resolve-conflicts`),
+# overriding [batch] for conflict resolution only. Unset keys inherit [batch],
+# so conflicts run at the normal pace unless you slow them here — handy for
+# --rebase, which force-pushes each branch one autonomous thread at a time.
+# batch_size = 1              # conflict threads per batch (default: inherit [batch])
+# batch_delay = 2             # minutes between conflict batches (default: inherit)
+# launch_delay = 1.0          # seconds between individual conflict launches (default: inherit)
+# initial_wait = 0            # minutes before the first conflict batch (default: inherit)
 
 [models]
 # Define model aliases. The key is what you pass to --model.

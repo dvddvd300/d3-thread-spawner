@@ -9,9 +9,11 @@ from types import SimpleNamespace
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from d3_thread_spawner import config as config_mod  # noqa: E402
 from d3_thread_spawner import github as gh  # noqa: E402
 from d3_thread_spawner.commands import conflicts as conflicts_mod  # noqa: E402
 from d3_thread_spawner.commands import triage as triage_mod  # noqa: E402
+from d3_thread_spawner.config import load_config  # noqa: E402
 from d3_thread_spawner.models import AgentSettings, PRStatus  # noqa: E402
 from d3_thread_spawner.prompts import build_conflict_resolution_prompt  # noqa: E402
 
@@ -322,6 +324,152 @@ class CmdTriageTest(unittest.TestCase):
         args = SimpleNamespace(pr_numbers=[], mine=False, resolve_conflicts=True, merge=False, rebase=True)
         self._run(args, prs)
         self.assertEqual(self.launched, [(1, "rebase")])
+
+
+class ConflictBatchOverrideTest(unittest.TestCase):
+    """`for_conflict_batch()` overlays [conflicts] pacing onto the global batch."""
+
+    def test_unset_inherits_global_batch(self):
+        s = AgentSettings(batch_size=5, batch_delay=0, launch_delay=0.5, initial_wait=0)
+        eff = s.for_conflict_batch()
+        self.assertEqual(
+            (eff.batch_size, eff.batch_delay, eff.launch_delay, eff.initial_wait),
+            (5, 0, 0.5, 0),
+        )
+
+    def test_overrides_take_precedence(self):
+        s = AgentSettings(
+            batch_size=5, batch_delay=0, launch_delay=0.5, initial_wait=0,
+            conflict_batch_size=1, conflict_batch_delay=2,
+            conflict_launch_delay=1.0, conflict_initial_wait=3,
+        )
+        eff = s.for_conflict_batch()
+        self.assertEqual(
+            (eff.batch_size, eff.batch_delay, eff.launch_delay, eff.initial_wait),
+            (1, 2, 1.0, 3),
+        )
+
+    def test_zero_override_is_respected_not_treated_as_unset(self):
+        # 0 is a valid override (e.g. no delay) — falling back on falsiness
+        # instead of `is None` would wrongly inherit the global value.
+        s = AgentSettings(batch_delay=9, conflict_batch_delay=0)
+        self.assertEqual(s.for_conflict_batch().batch_delay, 0)
+
+    def test_partial_override_mixes_with_global(self):
+        s = AgentSettings(batch_size=5, batch_delay=7, conflict_batch_size=1)
+        eff = s.for_conflict_batch()
+        self.assertEqual(eff.batch_size, 1)    # overridden
+        self.assertEqual(eff.batch_delay, 7)   # inherited from [batch]
+
+    def test_unrelated_fields_preserved(self):
+        s = AgentSettings(github_repo="o/n", conflict_strategy="rebase",
+                          dry_run=True, model="sonnet", conflict_batch_size=1)
+        eff = s.for_conflict_batch()
+        self.assertEqual(eff.github_repo, "o/n")
+        self.assertEqual(eff.conflict_strategy, "rebase")
+        self.assertEqual(eff.model, "sonnet")
+        self.assertTrue(eff.dry_run)
+
+
+class ConflictBatchLaunchTest(unittest.TestCase):
+    """The conflicts flow launches with the paced (overridden) settings."""
+
+    def setUp(self):
+        self._saved = {k: getattr(conflicts_mod, k) for k in
+                       ("fetch_prs_status", "refresh_unknown_mergeable", "launch_batch")}
+
+    def tearDown(self):
+        for k, v in self._saved.items():
+            setattr(conflicts_mod, k, v)
+
+    def test_cmd_conflicts_passes_overridden_pace_to_launch_batch(self):
+        prs = [_pr(1, mergeable="CONFLICTING"), _pr(2, mergeable="CONFLICTING")]
+        conflicts_mod.fetch_prs_status = lambda *a, **k: prs
+        conflicts_mod.refresh_unknown_mergeable = lambda repo, p, **k: p
+        captured = {}
+        conflicts_mod.launch_batch = lambda items, settings: captured.update(
+            batch_size=settings.batch_size, batch_delay=settings.batch_delay,
+            launch_delay=settings.launch_delay)
+
+        args = SimpleNamespace(pr_numbers=[], mine=True, merge=False, rebase=True)
+        settings = AgentSettings(
+            github_repo="o/n", dry_run=True, batch_size=5, batch_delay=0,
+            launch_delay=0.5, conflict_batch_size=1, conflict_batch_delay=2,
+        )
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            conflicts_mod.cmd_conflicts(args, settings)
+        self.assertEqual(captured.get("batch_size"), 1)    # [conflicts] override
+        self.assertEqual(captured.get("batch_delay"), 2)   # [conflicts] override
+        self.assertEqual(captured.get("launch_delay"), 0.5)  # inherited from [batch]
+
+
+class ConfigConflictBatchTest(unittest.TestCase):
+    """[conflicts] batch keys load from TOML and env with correct types."""
+
+    def test_toml_overrides_populate_settings(self):
+        import os
+        import tempfile
+        toml = (
+            "[conflicts]\n"
+            'strategy = "rebase"\n'
+            "batch_size = 1\n"
+            "batch_delay = 2\n"
+            "launch_delay = 1.5\n"
+            "initial_wait = 3\n"
+        )
+        with tempfile.NamedTemporaryFile("w", suffix=".toml", delete=False) as f:
+            f.write(toml)
+            path = f.name
+        try:
+            s = load_config(SimpleNamespace(config=path))
+        finally:
+            os.unlink(path)
+        self.assertEqual(s.conflict_strategy, "rebase")
+        self.assertEqual(s.conflict_batch_size, 1)
+        self.assertEqual(s.conflict_batch_delay, 2)
+        self.assertEqual(s.conflict_launch_delay, 1.5)
+        self.assertEqual(s.conflict_initial_wait, 3)
+        self.assertEqual(s.for_conflict_batch().batch_size, 1)
+
+    def test_unset_toml_leaves_overrides_none(self):
+        import os
+        import tempfile
+        with tempfile.NamedTemporaryFile("w", suffix=".toml", delete=False) as f:
+            f.write("[general]\nmodel = \"opus\"\n")
+            path = f.name
+        try:
+            s = load_config(SimpleNamespace(config=path))
+        finally:
+            os.unlink(path)
+        self.assertIsNone(s.conflict_batch_size)
+        self.assertIsNone(s.conflict_batch_delay)
+        self.assertIsNone(s.conflict_launch_delay)
+        self.assertIsNone(s.conflict_initial_wait)
+
+    def test_env_overrides_are_type_coerced(self):
+        import os
+        keys = {
+            "D3TS_CONFLICT_BATCH_SIZE": "1",
+            "D3TS_CONFLICT_BATCH_DELAY": "2",
+            "D3TS_CONFLICT_LAUNCH_DELAY": "1.5",
+            "D3TS_CONFLICT_INITIAL_WAIT": "3",
+        }
+        saved = {k: os.environ.get(k) for k in keys}
+        try:
+            os.environ.update(keys)
+            out = config_mod._apply_env({})
+        finally:
+            for k, v in saved.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
+        c = out["conflicts"]
+        self.assertEqual(c["batch_size"], 1)
+        self.assertIsInstance(c["batch_size"], int)
+        self.assertEqual(c["launch_delay"], 1.5)
+        self.assertIsInstance(c["launch_delay"], float)
 
 
 if __name__ == "__main__":

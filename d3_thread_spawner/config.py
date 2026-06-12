@@ -100,6 +100,20 @@ ENV_MAP = {
     "D3TS_CONTEXT_WINDOW": ("model_options", "context_window"),
     "D3TS_PR_MAX_PROMPT_CHARS": ("pr", "max_prompt_chars"),
     "D3TS_CONFLICT_STRATEGY": ("conflicts", "strategy"),
+    "D3TS_CONFLICT_BATCH_SIZE": ("conflicts", "batch_size"),
+    "D3TS_CONFLICT_BATCH_DELAY": ("conflicts", "batch_delay"),
+    "D3TS_CONFLICT_LAUNCH_DELAY": ("conflicts", "launch_delay"),
+    "D3TS_CONFLICT_INITIAL_WAIT": ("conflicts", "initial_wait"),
+}
+
+# Type hints for env keys whose section default is absent or None (the optional
+# [conflicts] batch overrides carry no concrete default, so type coercion in
+# _apply_env can't infer their type from DEFAULTS).
+ENV_TYPE_HINTS = {
+    ("conflicts", "batch_size"): int,
+    ("conflicts", "batch_delay"): int,
+    ("conflicts", "launch_delay"): float,
+    ("conflicts", "initial_wait"): int,
 }
 
 
@@ -143,13 +157,17 @@ def _apply_env(config: dict) -> dict:
             continue
         if section not in config:
             config[section] = {}
-        # Type coercion based on defaults
-        default_val = DEFAULTS.get(section, {}).get(key)
-        if isinstance(default_val, bool):
+        # Type coercion: prefer an explicit hint, else infer from the default.
+        # (bool is a subclass of int, so compare types exactly, bool first.)
+        typ = ENV_TYPE_HINTS.get((section, key))
+        if typ is None:
+            default_val = DEFAULTS.get(section, {}).get(key)
+            typ = type(default_val) if default_val is not None else str
+        if typ is bool:
             config[section][key] = val.lower() in ("1", "true", "yes")
-        elif isinstance(default_val, int):
+        elif typ is int:
             config[section][key] = int(val)
-        elif isinstance(default_val, float):
+        elif typ is float:
             config[section][key] = float(val)
         else:
             config[section][key] = val
@@ -332,6 +350,11 @@ def load_config(cli_args=None) -> AgentSettings:
         model_aliases=config.get("models", DEFAULTS["models"]),
         max_prompt_chars=pr_cfg.get("max_prompt_chars", 100_000),
         conflict_strategy=conflicts_cfg.get("strategy", "merge"),
+        # Optional [conflicts] batch overrides; None ⇒ inherit global [batch].
+        conflict_batch_size=conflicts_cfg.get("batch_size"),
+        conflict_batch_delay=conflicts_cfg.get("batch_delay"),
+        conflict_launch_delay=conflicts_cfg.get("launch_delay"),
+        conflict_initial_wait=conflicts_cfg.get("initial_wait"),
     )
 
 

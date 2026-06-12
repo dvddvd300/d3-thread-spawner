@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Dict, List, Optional
 
 
@@ -73,6 +73,14 @@ class AgentSettings:
     # Conflict resolution
     conflict_strategy: str = "merge"  # "merge" (default) or "rebase"
 
+    # Conflict-resolution batch pacing. Each is an override for the matching
+    # batch_* field above, applied only to the conflicts flow (the `conflicts`
+    # command and `triage --resolve-conflicts`). None ⇒ inherit the global value.
+    conflict_batch_size: Optional[int] = None
+    conflict_batch_delay: Optional[int] = None
+    conflict_launch_delay: Optional[float] = None
+    conflict_initial_wait: Optional[int] = None
+
     # Model aliases
     model_aliases: Dict[str, str] = field(default_factory=lambda: {
         "opus": "claude-opus-4-8",
@@ -112,6 +120,37 @@ class AgentSettings:
         if "thinking" in supported:
             options.append({"id": "thinking", "value": self.thinking})
         return options
+
+    def for_conflict_batch(self) -> "AgentSettings":
+        """Return a copy whose batch pacing reflects the ``[conflicts]`` overrides.
+
+        The ``conflicts`` command (and ``triage --resolve-conflicts``) launch
+        autonomous threads that resolve and *push* — under ``--rebase`` they
+        even force-push. So they can be paced independently of ordinary spawns,
+        ``[conflicts]`` may carry its own ``batch_size``/``batch_delay``/
+        ``launch_delay``/``initial_wait``. Each unset override (``None``)
+        inherits the global ``[batch]`` value, so conflicts run at the normal
+        pace unless explicitly slowed down.
+        """
+        return replace(
+            self,
+            batch_size=(
+                self.batch_size if self.conflict_batch_size is None
+                else self.conflict_batch_size
+            ),
+            batch_delay=(
+                self.batch_delay if self.conflict_batch_delay is None
+                else self.conflict_batch_delay
+            ),
+            launch_delay=(
+                self.launch_delay if self.conflict_launch_delay is None
+                else self.conflict_launch_delay
+            ),
+            initial_wait=(
+                self.initial_wait if self.conflict_initial_wait is None
+                else self.conflict_initial_wait
+            ),
+        )
 
     @property
     def github_owner(self) -> str:
