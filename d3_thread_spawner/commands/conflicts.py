@@ -64,7 +64,13 @@ def conflicting_open(prs: List[PRStatus]) -> Tuple[List[PRStatus], List[PRStatus
 def launch_conflict_resolution(
     prs: List[PRStatus], settings: AgentSettings, strategy: str
 ) -> None:
-    """Build conflict work items for *prs* and launch them (with a confirm)."""
+    """Build conflict work items for *prs* and launch them (with a confirm).
+
+    Conflict launches are paced by ``[conflicts]`` batch overrides (falling back
+    to the global ``[batch]`` settings), so a run can be slowed down — small
+    batches, delays between them — independently of ordinary ``spawn`` batching.
+    """
+    settings = settings.for_conflict_batch()
     items = build_conflict_items(prs, settings, strategy)
     if not items:
         return

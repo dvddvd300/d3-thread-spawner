@@ -200,7 +200,18 @@ d3-spawn conflicts 58 61
 
 # Rebase onto base instead of merging (force-pushes with lease)
 d3-spawn conflicts --rebase
+
+# Go slow: one branch at a time, two minutes between launches
+d3-spawn conflicts --mine --rebase --batch-size 1 --batch-delay 2
 ```
+
+Conflict launches are batched like everything else, but can be paced
+**independently** of ordinary `spawn` runs via the `[conflicts]` config keys
+(`batch_size`, `batch_delay`, `launch_delay`, `initial_wait`) — unset keys
+inherit `[batch]`. This is handy for `--rebase`, which force-pushes each branch:
+set `[conflicts] batch_size = 1` and a `batch_delay` to roll them out one at a
+time. The global `--batch-size`/`--batch-delay` flags also apply for a one-off
+slow run.
 
 | `conflicts` / `triage` flag | Description |
 |---|---|
@@ -274,6 +285,13 @@ dir = "~/d3ts-worktrees/{project}"   # {project} = repo dir name
 
 [conflicts]
 strategy = "merge"          # "merge" (base into branch) or "rebase" (onto base)
+# Batch pacing for conflict resolution, overriding [batch] for this command only.
+# Unset keys inherit [batch], so conflicts run at the normal pace unless slowed
+# here — useful for --rebase (force-pushes each branch) to avoid hammering CI.
+# batch_size = 1            # conflict threads per batch (default: inherit [batch])
+# batch_delay = 2           # minutes between conflict batches (default: inherit)
+# launch_delay = 1.0        # seconds between individual conflict launches (default: inherit)
+# initial_wait = 0          # minutes before the first conflict batch (default: inherit)
 
 [models]
 opus = "claude-opus-4-8"    # needs T3's Claude Code CLI >= 2.1.154
@@ -305,6 +323,10 @@ fast_mode = false           # Opus 4.5/4.6 only
 | `D3TS_CACHE` | Use the local PR-thread cache (true/false) |
 | `D3TS_CACHE_DIR` | PR-thread cache location |
 | `D3TS_CONFLICT_STRATEGY` | Conflict resolution strategy (`merge` or `rebase`) |
+| `D3TS_CONFLICT_BATCH_SIZE` | Conflict threads per batch (default: inherit `[batch]`) |
+| `D3TS_CONFLICT_BATCH_DELAY` | Minutes between conflict batches (default: inherit) |
+| `D3TS_CONFLICT_LAUNCH_DELAY` | Seconds between individual conflict launches (default: inherit) |
+| `D3TS_CONFLICT_INITIAL_WAIT` | Minutes before the first conflict batch (default: inherit) |
 
 ## Batch Processing
 
