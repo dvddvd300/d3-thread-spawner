@@ -32,6 +32,16 @@ CLAUDE_MODEL_OPTIONS: Dict[str, frozenset] = {
 DEFAULT_CLAUDE_MODEL_OPTIONS: frozenset = frozenset({"effort", "contextWindow"})
 
 
+# Shared/long-lived integration branches that must NEVER be rebased + force-pushed.
+# Force-pushing such a branch rewrites history that every open PR based on it — and
+# every teammate's clone — depends on. The conflicts flow auto-downgrades --rebase to
+# merge for any head branch matching this list (override: conflict_rebase_protected).
+DEFAULT_PROTECTED_BRANCHES: List[str] = [
+    "main", "master", "develop", "dev", "staging", "stage",
+    "production", "prod", "release", "next", "trunk",
+]
+
+
 @dataclass
 class AgentSettings:
     """Resolved settings for a single agent launch."""
@@ -72,6 +82,16 @@ class AgentSettings:
 
     # Conflict resolution
     conflict_strategy: str = "merge"  # "merge" (default) or "rebase"
+
+    # Branch-safety guard for the rebase strategy. Rebasing + force-pushing a
+    # shared/long-lived integration branch (dev, main, release/*) rewrites history
+    # every dependent PR and clone relies on, so under --rebase a head branch in
+    # this list is auto-downgraded to merge. Set conflict_rebase_protected (the
+    # --force-rebase-protected flag) to override for the rare intentional case.
+    conflict_protected_branches: List[str] = field(
+        default_factory=lambda: list(DEFAULT_PROTECTED_BRANCHES)
+    )
+    conflict_rebase_protected: bool = False
 
     # Conflict-resolution batch pacing. Each is an override for the matching
     # batch_* field above, applied only to the conflicts flow (the `conflicts`
@@ -151,6 +171,19 @@ class AgentSettings:
                 else self.conflict_initial_wait
             ),
         )
+
+    def is_protected_branch(self, branch: str) -> bool:
+        """True if *branch* is a shared/long-lived integration branch that must
+        never be rebased + force-pushed.
+
+        Matches the full ref name OR its first path segment (case-insensitive), so
+        ``dev`` and ``release/2.28`` match while ``feature/x`` / ``bugfix/y`` do not.
+        """
+        if not branch:
+            return False
+        protected = {b.strip().lower() for b in self.conflict_protected_branches}
+        name = branch.strip().lower()
+        return name in protected or name.split("/", 1)[0] in protected
 
     @property
     def github_owner(self) -> str:

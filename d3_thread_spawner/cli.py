@@ -6,6 +6,7 @@ import argparse
 import os
 import sys
 import textwrap
+from dataclasses import replace
 
 from . import __version__
 from .config import load_config
@@ -22,6 +23,12 @@ def _add_conflict_strategy_flags(p: argparse.ArgumentParser) -> None:
     grp.add_argument(
         "--rebase", action="store_true",
         help="Resolve by rebasing the branch onto base (force-pushes with lease)",
+    )
+    p.add_argument(
+        "--force-rebase-protected", action="store_true",
+        help="Allow --rebase to force-push a shared/long-lived branch "
+             "(dev, main, release/*). Off by default: such branches auto-downgrade "
+             "to merge so dependent PRs and clones aren't broken.",
     )
 
 
@@ -323,6 +330,11 @@ def main() -> int:
         set_verbose(True)
 
     settings = load_config(args)
+
+    # A shared/long-lived head branch auto-downgrades --rebase to merge (see
+    # AgentSettings.is_protected_branch); --force-rebase-protected opts out.
+    if getattr(args, "force_rebase_protected", False):
+        settings = replace(settings, conflict_rebase_protected=True)
 
     # Verify repo exists (not needed for status/clean/config)
     if args.command not in ("status", "clean", "config"):

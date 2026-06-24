@@ -11,7 +11,7 @@ except ModuleNotFoundError:
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from .models import AgentSettings
+from .models import AgentSettings, DEFAULT_PROTECTED_BRANCHES
 from .util import log, log_verbose
 
 
@@ -65,6 +65,10 @@ DEFAULTS = {
     },
     "conflicts": {
         "strategy": "merge",        # "merge" or "rebase"
+        # Auto-downgrade --rebase to merge for these shared/long-lived head branches
+        # (force-pushing them rewrites history every dependent PR + clone relies on).
+        "protected_branches": list(DEFAULT_PROTECTED_BRANCHES),
+        "rebase_protected": False,  # True ⇒ allow rebasing protected branches anyway
     },
     "models": {
         "opus": "claude-opus-4-8",
@@ -100,6 +104,7 @@ ENV_MAP = {
     "D3TS_CONTEXT_WINDOW": ("model_options", "context_window"),
     "D3TS_PR_MAX_PROMPT_CHARS": ("pr", "max_prompt_chars"),
     "D3TS_CONFLICT_STRATEGY": ("conflicts", "strategy"),
+    "D3TS_CONFLICT_REBASE_PROTECTED": ("conflicts", "rebase_protected"),
     "D3TS_CONFLICT_BATCH_SIZE": ("conflicts", "batch_size"),
     "D3TS_CONFLICT_BATCH_DELAY": ("conflicts", "batch_delay"),
     "D3TS_CONFLICT_LAUNCH_DELAY": ("conflicts", "launch_delay"),
@@ -350,6 +355,11 @@ def load_config(cli_args=None) -> AgentSettings:
         model_aliases=config.get("models", DEFAULTS["models"]),
         max_prompt_chars=pr_cfg.get("max_prompt_chars", 100_000),
         conflict_strategy=conflicts_cfg.get("strategy", "merge"),
+        conflict_protected_branches=(
+            conflicts_cfg.get("protected_branches")
+            or list(DEFAULT_PROTECTED_BRANCHES)
+        ),
+        conflict_rebase_protected=conflicts_cfg.get("rebase_protected", False),
         # Optional [conflicts] batch overrides; None ⇒ inherit global [batch].
         conflict_batch_size=conflicts_cfg.get("batch_size"),
         conflict_batch_delay=conflicts_cfg.get("batch_delay"),

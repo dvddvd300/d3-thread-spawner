@@ -30,6 +30,12 @@ dir = "~/d3ts-worktrees/{project}" # {project} = repo directory name
 
 [conflicts]
 strategy = "merge"                 # "merge" (base into branch) or "rebase" (onto base)
+# Safety guard: under "rebase", a head branch matching protected_branches is
+# auto-downgraded to merge — force-pushing a shared/long-lived branch rewrites the
+# history every dependent PR and clone relies on. Override per run with
+# --force-rebase-protected (or set rebase_protected = true here).
+protected_branches = ["main", "master", "develop", "dev", "staging", "stage", "production", "prod", "release", "next", "trunk"]
+rebase_protected = false
 
 [models]
 # Define aliases for model IDs. Use these with --model flag.

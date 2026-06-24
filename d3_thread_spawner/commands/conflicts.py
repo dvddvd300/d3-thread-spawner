@@ -29,18 +29,47 @@ def resolve_strategy(args, settings: AgentSettings) -> str:
     return settings.conflict_strategy
 
 
+def effective_strategy(pr: PRStatus, strategy: str, settings: AgentSettings) -> str:
+    """Per-PR strategy with the shared-branch safety guard applied.
+
+    Rebasing + force-pushing a shared/long-lived head branch (``dev``, ``main``,
+    ``release/*``) rewrites history that every open PR based on it — and every
+    teammate's clone — depends on (this is what turned a 1-file PR into a 100k-LOC
+    diff once). For such a branch ``merge`` is always safe and ``rebase`` never is,
+    so we auto-downgrade ``rebase`` → ``merge`` unless ``conflict_rebase_protected``
+    is set (the ``--force-rebase-protected`` flag).
+    """
+    if (
+        strategy == "rebase"
+        and settings.is_protected_branch(pr.branch)
+        and not settings.conflict_rebase_protected
+    ):
+        return "merge"
+    return strategy
+
+
 def build_conflict_items(
     prs: List[PRStatus], settings: AgentSettings, strategy: str
 ) -> List[WorkItem]:
-    """One WorkItem per conflicting PR, checked out on the PR's own branch."""
+    """One WorkItem per conflicting PR, checked out on the PR's own branch.
+
+    Applies the shared-branch guard (:func:`effective_strategy`) per PR, so a
+    ``--rebase`` run never emits a force-push prompt for a protected branch.
+    """
     items: List[WorkItem] = []
     for pr in prs:
+        eff = effective_strategy(pr, strategy, settings)
+        if eff != strategy:
+            log("⚠️ ", f"PR #{pr.number}: '{pr.branch}' is a shared/long-lived branch — "
+                       f"resolving via MERGE, not rebase (no force-push; preserves the "
+                       f"history every dependent PR and clone relies on). "
+                       f"Override: --force-rebase-protected.")
         leaf = pr.branch.split("/")[-1]
         slug = slugify(leaf, 30) or str(pr.number)
         items.append(WorkItem(
             name=f"conflict-{pr.number}-{slug}",
             branch=pr.branch,
-            prompt=build_conflict_resolution_prompt(pr, strategy),
+            prompt=build_conflict_resolution_prompt(pr, eff),
             settings=settings,
             create_branch=False,   # check out the existing PR branch, don't fork
             worktree_from=None,
@@ -134,10 +163,12 @@ def cmd_conflicts(args, settings: AgentSettings):
         return
 
     log("🔴", f"{len(conflicting)} open PR(s) with merge conflicts "
-              f"(resolving via {strategy}):")
+              f"(default strategy: {strategy}):")
     for p in conflicting:
+        eff = effective_strategy(p, strategy, settings)
         title = p.title[:50]
-        print(f"    #{p.number} ← {p.branch}  (base: {p.base_branch})  {title}")
+        downgrade = "" if eff == strategy else "  → MERGE (shared branch, no force-push)"
+        print(f"    #{p.number} ← {p.branch}  (base: {p.base_branch})  {title}{downgrade}")
 
     if unknown:
         print()

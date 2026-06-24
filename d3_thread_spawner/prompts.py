@@ -281,6 +281,21 @@ rebase {pr_branch} onto {base_branch}, resolve every conflict correctly, verify,
 and force-push (with lease) — autonomously. Do NOT wait for human approval
 unless a conflict is genuinely ambiguous (see Step 2).
 
+⛔ STOP-FIRST — REFUSE IF THIS REWRITES SHARED HISTORY:
+  Rebasing force-pushes {pr_branch}, which REWRITES its commit history. That is
+  safe ONLY when {pr_branch} is a disposable feature/PR branch nobody else builds
+  on. It is DESTRUCTIVE for a shared/long-lived integration branch: it breaks every
+  open PR based on {pr_branch} (their diffs explode to include all the rewritten
+  commits) and forces every teammate's clone to diverge. Before touching anything:
+    1. If {pr_branch} is (or looks like) a long-lived branch — main, master,
+       develop, dev, trunk, next, or a release*/stage*/prod* branch — STOP.
+    2. Check for dependents: `gh pr list --base {pr_branch} --state open`. If ANY
+       PR targets {pr_branch} as its base, STOP.
+  If either holds, do NOT rebase or force-push. Report that this PR must be resolved
+  with the MERGE strategy instead (merge {base_branch} into {pr_branch} — a normal
+  push, no history rewrite) and stop. Only proceed when {pr_branch} is a disposable
+  branch with no dependents.
+
 WORKFLOW:
 
   STEP 0 — SYNC:
@@ -319,6 +334,9 @@ WORKFLOW:
     - If verification FAILS, fix it; if you cannot, STOP and report — do not push.
 
   STEP 4 — FORCE-PUSH (with lease):
+    - Re-confirm the STOP-FIRST check still holds: never force-push a shared branch
+      or one with dependent PRs. Force-push rewrites the history every dependent PR
+      and every clone relies on — there is no clean undo for collaborators.
     - Only if the rebase actually rewrote the branch (Step 1):
       `git push --force-with-lease origin {pr_branch}`
       (a rebase rewrites history, so a normal push is rejected; --force-with-lease

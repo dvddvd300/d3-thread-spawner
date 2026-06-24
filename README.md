@@ -218,7 +218,17 @@ slow run.
 | `--mine` | Only my PRs |
 | `--merge` | Merge base into the branch (no force-push) — the default |
 | `--rebase` | Rebase the branch onto base (force-pushes with `--force-with-lease`) |
+| `--force-rebase-protected` | Let `--rebase` force-push a protected (shared/long-lived) branch; off by default |
 | `--resolve-conflicts` | (`triage` only) launch conflict resolution after the report |
+
+> **Shared-branch guard.** `--rebase` force-pushes, which **rewrites history**. On a
+> shared/long-lived branch (`dev`, `main`, `develop`, `release/*`, …) that breaks every
+> open PR based on it (their diffs explode) and forces teammates' clones to diverge. So
+> under `--rebase`, a head branch matching `[conflicts] protected_branches` is
+> **automatically downgraded to merge** (a normal push, no rewrite) — the conflict is
+> still resolved, safely. Pass `--force-rebase-protected` (or set
+> `[conflicts] rebase_protected = true`) only when you truly intend to rewrite that
+> branch. Feature/PR branches rebase as normal.
 
 GitHub computes mergeability asynchronously, so PRs that report `UNKNOWN` are
 re-checked once before the conflicting/clean split is finalized.
@@ -285,6 +295,11 @@ dir = "~/d3ts-worktrees/{project}"   # {project} = repo dir name
 
 [conflicts]
 strategy = "merge"          # "merge" (base into branch) or "rebase" (onto base)
+# Safety guard: under "rebase", a head branch matching protected_branches is
+# auto-downgraded to merge (force-pushing a shared branch rewrites history that
+# dependent PRs and clones rely on). Override with --force-rebase-protected.
+# protected_branches = ["main", "master", "develop", "dev", "staging", "stage", "production", "prod", "release", "next", "trunk"]
+# rebase_protected = false  # true ⇒ allow rebasing protected branches anyway
 # Batch pacing for conflict resolution, overriding [batch] for this command only.
 # Unset keys inherit [batch], so conflicts run at the normal pace unless slowed
 # here — useful for --rebase (force-pushes each branch) to avoid hammering CI.
@@ -323,6 +338,7 @@ fast_mode = false           # Opus 4.5/4.6 only
 | `D3TS_CACHE` | Use the local PR-thread cache (true/false) |
 | `D3TS_CACHE_DIR` | PR-thread cache location |
 | `D3TS_CONFLICT_STRATEGY` | Conflict resolution strategy (`merge` or `rebase`) |
+| `D3TS_CONFLICT_REBASE_PROTECTED` | Allow rebasing protected/shared branches (true/false; default false) |
 | `D3TS_CONFLICT_BATCH_SIZE` | Conflict threads per batch (default: inherit `[batch]`) |
 | `D3TS_CONFLICT_BATCH_DELAY` | Minutes between conflict batches (default: inherit) |
 | `D3TS_CONFLICT_LAUNCH_DELAY` | Seconds between individual conflict launches (default: inherit) |
