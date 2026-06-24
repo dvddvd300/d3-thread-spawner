@@ -37,6 +37,11 @@ strategy = "merge"                 # "merge" (base into branch) or "rebase" (ont
 protected_branches = ["main", "master", "develop", "dev", "staging", "stage", "production", "prod", "release", "next", "trunk"]
 rebase_protected = false
 
+[review]
+# prompt_file = "~/my-review-guide.md"  # custom reviewer methodology for the
+                                   # `review` command (default: the bundled
+                                   # generic senior-reviewer guide)
+
 [models]
 # Define aliases for model IDs. Use these with --model flag.
 # Opus 4.8 requires T3 Code's bundled Claude Code CLI >= 2.1.154.

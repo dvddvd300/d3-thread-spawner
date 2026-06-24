@@ -44,6 +44,7 @@ def build_parser() -> argparse.ArgumentParser:
               %(prog)s spawn --from-file tasks.jsonl --batch-size 10
               %(prog)s pr 58 --reviewer coderabbitai
               %(prog)s pr --open --mine
+              %(prog)s review --open --mine
               %(prog)s triage
               %(prog)s conflicts
               %(prog)s status
@@ -242,6 +243,37 @@ def build_parser() -> argparse.ArgumentParser:
         help="Ignore the local PR-thread cache and re-fetch everything",
     )
 
+    # ── review ──
+    p_review = subs.add_parser(
+        "review",
+        help="Spawn a local reviewer thread per PR",
+        description=(
+            "Spawn one autonomous T3 thread per pull request that ACTS as a "
+            "senior code reviewer: it reads the PR diff read-only and posts a "
+            "full review (verdict, paste-ready comments, action items) as its "
+            "output. Unlike `pr` (which addresses existing review comments), "
+            "`review` generates the review locally — one thread per PR so you "
+            "can read each one on its own."
+        ),
+    )
+    p_review.add_argument(
+        "pr_numbers", nargs="*", type=int,
+        help="PR numbers to review (e.g., 58 61)",
+    )
+    p_review.add_argument(
+        "--open", action="store_true",
+        help="Review all open PRs",
+    )
+    p_review.add_argument(
+        "--mine", action="store_true",
+        help="Only my PRs (use with --open)",
+    )
+    p_review.add_argument(
+        "--review-prompt", dest="review_prompt", default=None,
+        help="Path to a custom reviewer prompt file "
+             "(default: the bundled generic reviewer guide)",
+    )
+
     # ── triage ──
     p_triage = subs.add_parser(
         "triage",
@@ -349,6 +381,7 @@ def main() -> int:
 
     from .commands.spawn import cmd_spawn
     from .commands.pr import cmd_pr
+    from .commands.review import cmd_review
     from .commands.triage import cmd_triage
     from .commands.conflicts import cmd_conflicts
     from .commands.status import cmd_status
@@ -358,6 +391,7 @@ def main() -> int:
     handlers = {
         "spawn": cmd_spawn,
         "pr": cmd_pr,
+        "review": cmd_review,
         "triage": cmd_triage,
         "conflicts": cmd_conflicts,
         "status": cmd_status,

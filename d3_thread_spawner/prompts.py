@@ -344,6 +344,46 @@ WORKFLOW:
 
 Begin with Step 0 now."""
 
+BUILTIN_PR_LOCAL_REVIEW_HEADER = """\
+You are performing a LOCAL CODE REVIEW of a single pull request. You are the
+reviewer — your job is to produce a review, NOT to modify, commit, or push code.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PR:     #{pr_number} — {pr_title}
+BRANCH: {pr_branch}  (checked out in your worktree)
+BASE:   {base_branch}
+URL:    {pr_url}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+This worktree is checked out on {pr_branch}. The PR's base branch is
+{base_branch} — wherever the methodology below uses `<base>`, read it as
+`{base_branch}`; wherever it uses `<branch>`, read it as `{pr_branch}`.
+
+GROUND RULES for this review:
+  - READ-ONLY. Do NOT edit files, commit, push, or create branches. Your only
+    deliverable is the review itself.
+  - SINGLE PR. You are reviewing only this one PR, already checked out as
+    {pr_branch}. Ignore the methodology's multi-PR / "bulk review" steps and its
+    `git fetch origin pull/<N>/head` path — you already have the branch. Treat
+    duplicate-PR detection as best-effort: flag a duplicate only if you can
+    actually see a sibling PR, otherwise skip it.
+  - RECOMMEND, DON'T ACT. The verdict and action items (including any "transition
+    ticket" / "close as duplicate" rows) are RECOMMENDATIONS to write into your
+    review — do NOT transition tickets, close PRs, or change any state.
+  - Start by fetching the refs you compare against:
+    `git fetch origin {base_branch} {pr_branch}`.
+  - Work from git + the diff + (if reachable) the issue tracker.
+  - Post your COMPLETE review as your final message in this thread, following
+    the OUTPUT FORMAT in the methodology (verdict, why, paste-ready comments
+    tagged 🔴/🟡/🟢, action items). That message is what the human will read.
+
+The full review methodology you must follow is below.
+
+═══════════════════════════════════════════════════════════════════════════════
+REVIEW METHODOLOGY
+═══════════════════════════════════════════════════════════════════════════════
+"""
+
 
 # ── Template Loading ────────────────────────────────────────────────────────
 
@@ -359,6 +399,27 @@ def load_prompt_template(template: str) -> str:
         with open(expanded) as f:
             return f.read().strip()
     return template
+
+
+# The generic reviewer methodology shipped with the package. Used as the default
+# body for the ``review`` command; override with --review-prompt / [review].
+_BUILTIN_REVIEW_PROMPT = os.path.join(os.path.dirname(__file__), "review_prompt.md")
+
+
+def load_review_guide(custom_path: Optional[str] = None) -> str:
+    """Return the reviewer methodology text the ``review`` command injects.
+
+    Uses ``custom_path`` (a user-supplied prompt file) when given, otherwise the
+    bundled generic guide. Raises ``RuntimeError`` if a custom path is missing.
+    """
+    if custom_path:
+        path = os.path.expanduser(custom_path)
+        if not os.path.isfile(path):
+            raise RuntimeError(f"Review prompt file not found: {path}")
+    else:
+        path = _BUILTIN_REVIEW_PROMPT
+    with open(path) as f:
+        return f.read().strip()
 
 
 def render_prompt(template: str, variables: Dict[str, str]) -> str:
@@ -523,6 +584,24 @@ def build_conflict_resolution_prompt(pr: PRStatus, strategy: str = "merge") -> s
         "base_branch": pr.base_branch,
         "pr_url": pr.url,
     })
+
+
+def build_pr_local_review_prompt(pr: PRStatus, review_guide: str) -> str:
+    """Build a read-only review prompt for a single PR.
+
+    Wraps the PR context + read-only ground rules around ``review_guide`` (the
+    methodology loaded by :func:`load_review_guide`). The guide is appended
+    verbatim — not interpolated — so its many ``{ }`` code samples are left
+    untouched.
+    """
+    header = render_prompt(BUILTIN_PR_LOCAL_REVIEW_HEADER, {
+        "pr_number": str(pr.number),
+        "pr_title": pr.title,
+        "pr_branch": pr.branch,
+        "base_branch": pr.base_branch,
+        "pr_url": pr.url,
+    })
+    return f"{header}\n{review_guide}\n"
 
 
 def build_spawn_prompt(task: str) -> str:

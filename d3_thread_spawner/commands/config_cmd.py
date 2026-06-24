@@ -43,6 +43,11 @@ TEMPLATE = """\
 [pr]
 # max_prompt_chars = 100000   # split bundled PR reviews above this size
 
+[review]
+# Custom reviewer methodology for the `review` command (which spawns a local
+# reviewer thread per PR). Unset ⇒ the bundled generic senior-reviewer guide.
+# prompt_file = "~/my-review-guide.md"
+
 [conflicts]
 # strategy = "merge"          # "merge" (base into branch) or "rebase" (onto base)
 # Batch pacing for the `conflicts` command (and `triage --resolve-conflicts`),

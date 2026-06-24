@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import os
 import sys
 try:
@@ -63,6 +64,9 @@ DEFAULTS = {
     "pr": {
         "max_prompt_chars": 100_000,
     },
+    "review": {
+        "prompt_file": "",          # "" ⇒ bundled generic reviewer guide
+    },
     "conflicts": {
         "strategy": "merge",        # "merge" or "rebase"
         # Auto-downgrade --rebase to merge for these shared/long-lived head branches
@@ -103,6 +107,7 @@ ENV_MAP = {
     "D3TS_CACHE_DIR": ("github", "cache_dir"),
     "D3TS_CONTEXT_WINDOW": ("model_options", "context_window"),
     "D3TS_PR_MAX_PROMPT_CHARS": ("pr", "max_prompt_chars"),
+    "D3TS_REVIEW_PROMPT": ("review", "prompt_file"),
     "D3TS_CONFLICT_STRATEGY": ("conflicts", "strategy"),
     "D3TS_CONFLICT_REBASE_PROTECTED": ("conflicts", "rebase_protected"),
     "D3TS_CONFLICT_BATCH_SIZE": ("conflicts", "batch_size"),
@@ -197,6 +202,7 @@ def _apply_cli(config: dict, cli_args) -> dict:
         ("model_options", "thinking"): "thinking",
         ("model_options", "fast_mode"): "fast_mode",
         ("pr", "max_prompt_chars"): "max_prompt_chars",
+        ("review", "prompt_file"): "review_prompt",
         ("github", "wait"): "wait",
         ("github", "wait_max_seconds"): "wait_max_seconds",
     }
@@ -267,7 +273,9 @@ def _auto_detect_t3(config: dict) -> tuple:
 
 def load_config(cli_args=None) -> AgentSettings:
     """Load configuration from all sources and return AgentSettings."""
-    config = dict(DEFAULTS)
+    # Deep-copy so per-call env/CLI overrides never mutate the shared DEFAULTS
+    # (the inner section dicts are mutated in place by _apply_env / _apply_cli).
+    config = copy.deepcopy(DEFAULTS)
 
     # 1. Global config
     global_path = Path(os.path.expanduser("~/.config/d3ts/config.toml"))
@@ -322,6 +330,7 @@ def load_config(cli_args=None) -> AgentSettings:
     t3 = config.get("t3", {})
     mo = config.get("model_options", {})
     pr_cfg = config.get("pr", {})
+    review_cfg = config.get("review", {})
     gh_cfg = config.get("github", {})
     conflicts_cfg = config.get("conflicts", {})
 
@@ -354,6 +363,7 @@ def load_config(cli_args=None) -> AgentSettings:
         )),
         model_aliases=config.get("models", DEFAULTS["models"]),
         max_prompt_chars=pr_cfg.get("max_prompt_chars", 100_000),
+        review_prompt_file=review_cfg.get("prompt_file", ""),
         conflict_strategy=conflicts_cfg.get("strategy", "merge"),
         conflict_protected_branches=(
             conflicts_cfg.get("protected_branches")

@@ -13,6 +13,7 @@ Programmatic [T3 Code](https://t3.chat) thread launcher. Spawn Claude Code agent
 - **Branch management** — work on existing branches or create new ones (with fork support)
 - **Batch processing** — launch 30+ tasks with configurable batch size and delays
 - **PR review** — fetch GitHub PR review threads and spawn agents to address them
+- **Local PR review** — spawn a reviewer thread per PR that generates a full review (verdict + paste-ready comments) you can read
 - **PR triage** — one-shot status report across all open PRs (conflicts, CI, reviews, ready)
 - **Conflict resolution** — resolve merge conflicts across every conflicting branch with one command
 - **Auto-detection** — T3 connection, project ID, and GitHub repo detected automatically
@@ -145,6 +146,50 @@ rest is printed.
 | `--wait` | On rate-limit, sleep until reset and resume on GraphQL |
 | `--wait-max-seconds N` | Cap for `--wait`; beyond it, fall back to REST (default 300) |
 | `--no-cache` | Ignore the local PR-thread cache and re-fetch |
+
+### `review` — Spawn a local reviewer thread per PR
+
+Where `pr` **addresses** existing review comments, `review` **generates** the
+review. It spawns one autonomous T3 thread per pull request that acts as a
+senior code reviewer: each thread checks out the PR branch **read-only**,
+follows a thorough review methodology (scope, sync, N+1 / efficiency, data-type
+& contract analysis, bug-risk audit, comment coverage, conventions), and posts a
+complete review — verdict, paste-ready comments tagged 🔴/🟡/🟢, and an action
+items table — as its thread output. One thread per PR, so you can read each
+review on its own.
+
+```bash
+# Review one PR
+d3-spawn review 58
+
+# Review several
+d3-spawn review 58 61
+
+# Review all my open PRs (one reviewer thread each)
+d3-spawn review --open --mine
+
+# Review every open PR
+d3-spawn review --open
+
+# Use your own reviewer methodology instead of the bundled one
+d3-spawn review --open --mine --review-prompt ~/my-review-guide.md
+```
+
+The reviewer threads are **read-only** — they don't edit, commit, or push; the
+review itself is the deliverable. The methodology is shipped with the tool
+([`d3_thread_spawner/review_prompt.md`](d3_thread_spawner/review_prompt.md)) and
+is stack-agnostic (it detects the language/framework/ORM from the repo). Point
+`--review-prompt` (or `[review] prompt_file`) at your own file to customize it.
+
+| `review` flag | Description |
+|---|---|
+| `--open` | Review all open PRs (combine with `--mine`) |
+| `--mine` | Only my PRs |
+| `--review-prompt PATH` | Custom reviewer methodology file (default: bundled guide) |
+
+> **`pr` vs `review`:** `pr --reviewer coderabbitai` fetches CodeRabbit's
+> comments and spawns agents to *fix* them; `review` spawns agents to *be* the
+> reviewer and write the review for you to read.
 
 ### `triage` — Classify open PRs at a glance
 
@@ -293,6 +338,10 @@ dir = "~/d3ts-worktrees/{project}"   # {project} = repo dir name
 [github]
 # repo = "owner/name"      # auto-detected from git remote
 
+[review]
+# prompt_file = "~/my-review-guide.md"   # custom reviewer methodology for the
+                            # `review` command (default: the bundled generic guide)
+
 [conflicts]
 strategy = "merge"          # "merge" (base into branch) or "rebase" (onto base)
 # Safety guard: under "rebase", a head branch matching protected_branches is
@@ -337,6 +386,7 @@ fast_mode = false           # Opus 4.5/4.6 only
 | `D3TS_WAIT_MAX_SECONDS` | Cap for auto-wait (default 300) |
 | `D3TS_CACHE` | Use the local PR-thread cache (true/false) |
 | `D3TS_CACHE_DIR` | PR-thread cache location |
+| `D3TS_REVIEW_PROMPT` | Custom reviewer methodology file for the `review` command |
 | `D3TS_CONFLICT_STRATEGY` | Conflict resolution strategy (`merge` or `rebase`) |
 | `D3TS_CONFLICT_REBASE_PROTECTED` | Allow rebasing protected/shared branches (true/false; default false) |
 | `D3TS_CONFLICT_BATCH_SIZE` | Conflict threads per batch (default: inherit `[batch]`) |

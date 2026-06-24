@@ -62,6 +62,10 @@ class AgentSettings:
     dry_run: bool = False
     max_prompt_chars: int = 100_000
 
+    # Local PR review (the `review` command). Empty ⇒ use the bundled generic
+    # reviewer guide (d3_thread_spawner/review_prompt.md).
+    review_prompt_file: str = ""
+
     # T3
     t3_host: str = "127.0.0.1"
     t3_port: int = 3773
