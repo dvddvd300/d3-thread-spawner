@@ -16,11 +16,12 @@ TEMPLATE = """\
 # See: https://github.com/dvddvd300/d3-thread-spawner
 
 [general]
-# model = "opus"              # opus, sonnet, haiku, or full model ID
+# model = "opus"              # opus, sonnet, haiku, gpt55, or full model ID
 # mode = "build"              # build (act immediately) or plan (propose first)
 # access = "full"             # full, auto-accept, supervised
 # effort = "high"             # low, medium, high, xhigh, max, ultracode, ultrathink
-#                             #   (xhigh/ultracode/ultrathink require Opus 4.8)
+#                             #   GPT uses low/medium/high/xhigh; Opus 4.8 also
+#                             #   exposes max/ultracode/ultrathink
 # base_branch = "main"        # default base branch for new worktrees
 # repo_dir = "."              # "." = auto-detect from CWD
 
@@ -61,16 +62,24 @@ TEMPLATE = """\
 
 [models]
 # Define model aliases. The key is what you pass to --model.
+# Provider routing is automatic from the resolved model slug:
+#   claude-* → T3 provider "claudeAgent"
+#   gpt-*    → T3 provider "codex"
 # Opus 4.8 requires T3 Code's bundled Claude Code CLI >= 2.1.154.
 # opus = "claude-opus-4-8"
 # sonnet = "claude-sonnet-4-6"
 # haiku = "claude-haiku-4-5"
+# gpt55 = "gpt-5.5"
 
 [model_options]
-# Sent only when the chosen model supports them:
-#   context_window → Opus 4.8/4.7/4.6, Sonnet 4.6 (haiku/opus-4.5 ignore it)
+# Sent only when the chosen model/provider supports them. JSONL tasks may
+# override these per line with service_tier/context_window/thinking/fast_mode.
+#   service_tier   → GPT/Codex models that expose Standard/Fast
+#   context_window → Claude models that expose 200k/1m
 #   thinking       → Haiku 4.5 only
-#   fast_mode      → Opus 4.5/4.6 only
+#   fast_mode      → Claude models that expose Fast Mode
+# service_tier accepts standard/default or fast/priority.
+# service_tier = "standard"   # standard/default or fast/priority
 # context_window = "1m"       # 200k or 1m
 # thinking = true
 # fast_mode = false

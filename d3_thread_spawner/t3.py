@@ -184,17 +184,9 @@ def launch_t3(item: WorkItem, token: str) -> str:
     msg_id = str(uuid.uuid4())
 
     # T3 routes a model selection by `instanceId` (the provider driver/instance
-    # split). For the built-in Claude driver the default instance id is literally
-    # "claudeAgent". We also send the legacy `provider` field, which T3 promotes
-    # to instanceId on decode — sending both keeps us compatible across versions.
-    # `options` is the canonical [{id, value}] array, built per-model so we only
-    # send options the chosen model supports.
-    model_selection = {
-        "instanceId": "claudeAgent",
-        "provider": "claudeAgent",
-        "model": s.resolved_model,
-        "options": s.model_selection_options(),
-    }
+    # split). `options` is the canonical [{id, value}] array, built per provider
+    # so GPT/Codex and Claude receive only their own option ids.
+    model_selection = s.model_selection()
 
     runtime_mode = {
         "full": "full-access",

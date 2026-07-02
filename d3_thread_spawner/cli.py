@@ -59,8 +59,8 @@ def build_parser() -> argparse.ArgumentParser:
     # ── Global flags ──
     parser.add_argument(
         "--model", default=None,
-        help="Claude model alias or full ID "
-             "(default: opus → claude-opus-4-8; also: sonnet, haiku)",
+        help="Model alias or full ID "
+             "(default: opus → claude-opus-4-8; also: sonnet, haiku, gpt55)",
     )
     parser.add_argument(
         "--mode", choices=["build", "plan"], default=None,
@@ -77,8 +77,16 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["low", "medium", "high", "xhigh", "max", "ultracode", "ultrathink"],
         default=None,
         help="Reasoning effort (default: high). Availability varies by model — "
-             "xhigh/ultracode/ultrathink need Opus 4.8; unsupported values are "
-             "clamped to the model's default by T3.",
+             "GPT supports low/medium/high/xhigh; Opus 4.8 also exposes max, "
+             "ultracode, and ultrathink. Unsupported values are clamped to the "
+             "model's default by T3.",
+    )
+    parser.add_argument(
+        "--service-tier",
+        choices=["default", "standard", "priority", "fast"],
+        default=None,
+        help="GPT/Codex service tier: standard/default or fast/priority "
+             "(default: standard)",
     )
     parser.add_argument(
         "--context-window", choices=["200k", "1m"], default=None,
@@ -376,8 +384,12 @@ def main() -> int:
             return 1
 
     extra = f"  wait={settings.initial_wait}m" if settings.initial_wait > 0 else ""
+    tier = (
+        f"  tier={settings.normalized_service_tier}"
+        if settings.model_provider == "codex" else ""
+    )
     log("⚙️ ", f"model={settings.model}  mode={settings.mode}  access={settings.access}  "
-        f"effort={settings.effort}  ctx={settings.context_window}{extra}")
+        f"effort={settings.effort}{tier}  ctx={settings.context_window}{extra}")
 
     from .commands.spawn import cmd_spawn
     from .commands.pr import cmd_pr

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+from dataclasses import replace
 from typing import List
 
 from ..batch import launch_batch
@@ -21,7 +22,7 @@ def _load_jsonl(path: str, settings: AgentSettings) -> List[WorkItem]:
       raw (optional bool, default false — send the prompt verbatim instead of
         wrapping it in the default spawn template; use for prompts that already
         contain their own full workflow),
-      optional overrides: model, mode, effort
+      optional overrides: model, mode, access, effort, service_tier
     """
     expanded = os.path.expanduser(path)
     if not os.path.isfile(expanded):
@@ -61,27 +62,16 @@ def _load_jsonl(path: str, settings: AgentSettings) -> List[WorkItem]:
                 )
 
             # Per-item settings overrides
-            item_settings = AgentSettings(
+            item_settings = replace(
+                settings,
                 model=entry.get("model", settings.model),
                 mode=entry.get("mode", settings.mode),
                 access=entry.get("access", settings.access),
                 effort=entry.get("effort", settings.effort),
-                base_branch=settings.base_branch,
-                repo_dir=settings.repo_dir,
-                context_window=settings.context_window,
-                thinking=settings.thinking,
-                fast_mode=settings.fast_mode,
-                batch_size=settings.batch_size,
-                batch_delay=settings.batch_delay,
-                launch_delay=settings.launch_delay,
-                initial_wait=settings.initial_wait,
-                dry_run=settings.dry_run,
-                t3_host=settings.t3_host,
-                t3_port=settings.t3_port,
-                t3_project_id=settings.t3_project_id,
-                worktree_dir=settings.worktree_dir,
-                github_repo=settings.github_repo,
-                model_aliases=settings.model_aliases,
+                service_tier=entry.get("service_tier", settings.service_tier),
+                context_window=entry.get("context_window", settings.context_window),
+                thinking=entry.get("thinking", settings.thinking),
+                fast_mode=entry.get("fast_mode", settings.fast_mode),
             )
 
             # Branch strategy
