@@ -35,15 +35,20 @@ def launch_batch(items: List[WorkItem], settings: AgentSettings) -> Tuple[int, i
                 src = item.worktree_from or s.base_branch
                 branch_info = f"→ NEW {item.branch} (from {src})"
 
+            tier_info = (
+                f"|tier:{s.normalized_service_tier}" if s.model_provider == "codex" else ""
+            )
             print(
-                f"  [{s.model}|{s.mode}|{s.access}|{s.effort}|"
-                f"ctx:{s.context_window}] "
-                f"{item.name} {branch_info}"
+                f"  [{s.model}|{s.mode}|{s.access}|{s.effort}"
+                f"{tier_info}|ctx:{s.context_window}] {item.name} {branch_info}"
             )
             opts = ", ".join(
                 f"{o['id']}={o['value']}" for o in s.model_selection_options()
             )
-            print(f"    model: {s.resolved_model}  options: [{opts}]")
+            print(
+                f"    provider: {s.model_provider}  model: {s.resolved_model}  "
+                f"options: [{opts}]"
+            )
             preview = item.prompt.replace("\n", " ")[:120]
             print(f"    {preview}...")
             print()

@@ -4,12 +4,12 @@
 
 # d3-thread-spawner
 
-Programmatic [T3 Code](https://t3.chat) thread launcher. Spawn Claude Code agents in isolated git worktrees via the T3 Code API — one at a time or in configurable batches.
+Programmatic [T3 Code](https://t3.chat) thread launcher. Spawn Claude or GPT/Codex agents in isolated git worktrees via the T3 Code API — one at a time or in configurable batches.
 
 ## Features
 
 - **Spawn T3 threads** with any prompt, inline or from files
-- **Full T3 settings control** — model, mode, effort, context window, thinking, fast mode
+- **Full T3 settings control** — model, mode, access, effort, GPT service tier, context window, thinking, fast mode
 - **Branch management** — work on existing branches or create new ones (with fork support)
 - **Batch processing** — launch 30+ tasks with configurable batch size and delays
 - **PR review** — fetch GitHub PR review threads and spawn agents to address them
@@ -29,10 +29,31 @@ Programmatic [T3 Code](https://t3.chat) thread launcher. Spawn Claude Code agent
 
 > **Models & effort.** The `opus` alias maps to **Claude Opus 4.8**, which needs
 > T3 Code's bundled Claude Code CLI **≥ 2.1.154** (Opus 4.7 needs ≥ 2.1.111).
-> Effort levels `xhigh`, `ultracode`, and `ultrathink` are Opus-4.8 features.
-> d3 sends only the options each model actually supports — `context_window`
-> (Opus 4.8/4.7/4.6, Sonnet 4.6), `thinking` (Haiku 4.5), `fast_mode`
-> (Opus 4.5/4.6) — and T3 clamps an unsupported effort to the model's default.
+> GPT models support `low`/`medium`/`high`/`xhigh`; Opus 4.8 also exposes
+> `max`, `ultracode`, and `ultrathink`.
+> GPT models use the `codex` provider with `reasoningEffort` and optional
+> `serviceTier`; Claude models use `claudeAgent` with Claude-specific option ids.
+> d3 sends only the options each model/provider supports, and T3 clamps an
+> unsupported effort to the model's default.
+
+## Provider Routing
+
+d3 chooses the T3 provider automatically from the resolved model slug. There is
+no separate provider flag.
+
+| Model slug / alias | T3 provider | Effort option sent to T3 | Provider-specific options |
+|--------------------|-------------|--------------------------|---------------------------|
+| `opus`, `sonnet`, `haiku`, `claude-*` | `claudeAgent` | `effort` | `context_window`, `thinking`, `fast_mode` only when that Claude model exposes them |
+| `gpt55`, `gpt5.5`, `gpt-*` | `codex` | `reasoningEffort` | `service_tier` only when that GPT/Codex model exposes it |
+
+Agent rules:
+
+- Put global flags before the subcommand: `d3-spawn --model gpt55 spawn "..."`.
+- Use user-facing fields only: `model`, `effort`, `service_tier`, `context_window`, `thinking`, `fast_mode`. Do not put T3 internal option ids such as `reasoningEffort` or `serviceTier` in JSONL.
+- `service_tier = "standard"` maps to T3's `default`; `service_tier = "fast"` maps to T3's `priority`.
+- Claude tasks ignore `service_tier`; GPT/Codex tasks ignore Claude-only options such as `context_window`, `thinking`, and `fast_mode`.
+- Mixed-provider batches are supported by setting `model` per JSONL line. Batch size controls launch grouping only; it does not need to match the provider.
+- Use `--dry-run` before launching a mixed batch. The preview prints `provider`, resolved `model`, and final `options`.
 
 ## Quick Start
 
@@ -97,6 +118,11 @@ d3-spawn spawn "PROJ-123: Fix login timeout" --template ~/prompts/my-template.tx
 
 # Override settings
 d3-spawn --model sonnet --mode build --access full --effort max spawn "Quick fix"
+d3-spawn --model gpt55 --service-tier standard --effort xhigh spawn "Quick fix"
+
+# Preview exact provider routing without launching
+d3-spawn --model gpt55 --service-tier standard --effort xhigh --dry-run \
+  spawn "Check provider payload"
 ```
 
 ### `pr` — Address PR review comments
@@ -317,7 +343,7 @@ Create with `d3-spawn config --init` or manually:
 # .d3ts.toml (in your repo root)
 
 [general]
-model = "opus"              # opus, sonnet, haiku, or full model ID
+model = "opus"              # opus, sonnet, haiku, gpt55, or full model ID
 mode = "build"              # build | plan (interaction mode)
 access = "full"             # full | auto-accept | supervised (access level)
 effort = "high"             # low | medium | high | xhigh | max | ultracode | ultrathink
@@ -358,14 +384,21 @@ strategy = "merge"          # "merge" (base into branch) or "rebase" (onto base)
 # initial_wait = 0          # minutes before the first conflict batch (default: inherit)
 
 [models]
+# Provider routing is automatic from the resolved model slug:
+#   claude-* → T3 provider "claudeAgent"
+#   gpt-*    → T3 provider "codex"
 opus = "claude-opus-4-8"    # needs T3's Claude Code CLI >= 2.1.154
 sonnet = "claude-sonnet-4-6"
 haiku = "claude-haiku-4-5"
+gpt55 = "gpt-5.5"
 
 [model_options]
-context_window = "1m"       # 200k or 1m (Opus 4.8/4.7/4.6 + Sonnet 4.6)
+# Sent only when the chosen model/provider supports them.
+# JSONL tasks may override these per line.
+service_tier = "standard"   # GPT/Codex: standard/default or fast/priority
+context_window = "1m"       # Claude models that expose 200k/1m
 thinking = true             # Haiku 4.5 only
-fast_mode = false           # Opus 4.5/4.6 only
+fast_mode = false           # Claude models that expose Fast Mode
 ```
 
 ### Environment variables
@@ -378,6 +411,7 @@ fast_mode = false           # Opus 4.5/4.6 only
 | `D3TS_MODE` | Interaction mode (build/plan) |
 | `D3TS_ACCESS` | Access level (full/auto-accept/supervised) |
 | `D3TS_EFFORT` | Default effort level |
+| `D3TS_SERVICE_TIER` | GPT/Codex service tier (`standard`/`default` or `fast`/`priority`) |
 | `D3TS_BASE_BRANCH` | Default base branch |
 | `D3TS_BATCH_SIZE` | Default batch size |
 | `D3TS_INITIAL_WAIT` | Minutes to wait before first batch |
@@ -404,6 +438,9 @@ For launching many tasks, create a JSONL file (one JSON object per line):
 {"name": "update-tests", "prompt": "Update payment service tests", "branch": "dev"}
 ```
 
+Each line can override the model/provider. Global CLI flags and config provide
+defaults; JSONL fields override them for that one thread.
+
 ### JSONL fields
 
 | Field | Required | Description |
@@ -414,19 +451,60 @@ For launching many tasks, create a JSONL file (one JSON object per line):
 | `branch` | no | Existing branch to work on |
 | `new_branch` | no | Create a new branch |
 | `fork_from` | no | Branch to fork from (with `new_branch`) |
-| `model` | no | Override model for this task |
+| `model` | no | Override model for this task (`gpt55`, `opus`, `claude-*`, `gpt-*`) |
 | `mode` | no | Override interaction mode (build/plan) |
 | `access` | no | Override access level (full/auto-accept/supervised) |
 | `effort` | no | Override effort for this task |
+| `service_tier` | no | Override GPT/Codex service tier for this task |
+| `context_window` | no | Override Claude context window for this task |
+| `thinking` | no | Override Claude thinking toggle for this task |
+| `fast_mode` | no | Override Claude fast-mode toggle for this task |
 
 Launch with:
 
 ```bash
 d3-spawn spawn --from-file tasks.jsonl --batch-size 10 --batch-delay 5
 
+# Three at a time, full access, GPT/Codex Standard tier.
+d3-spawn --batch-size 3 --access full --service-tier standard \
+  spawn --from-file tasks.jsonl
+
 # Wait 2 hours before starting, then launch 2 threads every 32 minutes
 d3-spawn spawn --from-file tasks.jsonl --initial-wait 120 --batch-size 2 --batch-delay 32
 ```
+
+Mixed-provider JSONL example:
+
+```jsonl
+{"name": "gpt-a", "prompt": "Task A", "new_branch": "d3ts/gpt-a", "model": "gpt55", "effort": "xhigh", "service_tier": "standard"}
+{"name": "gpt-b", "prompt": "Task B", "new_branch": "d3ts/gpt-b", "model": "gpt55", "effort": "xhigh", "service_tier": "standard"}
+{"name": "opus-max", "prompt": "Task C", "new_branch": "d3ts/opus-max", "model": "opus", "effort": "max"}
+```
+
+Launch it three at a time with full access:
+
+```bash
+d3-spawn --batch-size 3 --access full spawn --from-file examples/tasks-mixed-providers.jsonl
+```
+
+Dry-run first to verify provider routing:
+
+```bash
+d3-spawn --batch-size 3 --access full --dry-run \
+  spawn --from-file examples/tasks-mixed-providers.jsonl
+```
+
+Expected provider lines in dry-run output:
+
+```text
+provider: codex        model: gpt-5.5          options: [reasoningEffort=xhigh, serviceTier=default]
+provider: claudeAgent  model: claude-opus-4-8  options: [effort=max]
+```
+
+For agents: prefer this pattern when the user asks for "some GPT and some
+Claude". Put shared execution behavior (`--batch-size`, `--access`, delays) in
+global flags, then put model-specific choices (`model`, `effort`,
+`service_tier`) on each JSONL line.
 
 ## T3 Connection
 
@@ -453,11 +531,12 @@ d3-spawn [flags] <command> [command-flags]
 
 | Flag | Description |
 |------|-------------|
-| `--model MODEL` | Claude model alias (`opus`→4.8, `sonnet`, `haiku`) or full ID |
+| `--model MODEL` | Model alias (`opus`→Claude Opus 4.8, `sonnet`, `haiku`, `gpt55`) or full ID |
 | `--mode MODE` | Interaction mode: build or plan |
 | `--access LEVEL` | Access level: full, auto-accept, or supervised |
 | `--effort LEVEL` | low, medium, high, xhigh, max, ultracode, or ultrathink |
-| `--context-window SIZE` | 200k or 1m (Opus 4.8/4.7/4.6, Sonnet 4.6) |
+| `--service-tier TIER` | GPT/Codex service tier: standard/default or fast/priority |
+| `--context-window SIZE` | 200k or 1m for Claude models that expose it |
 | `--thinking / --no-thinking` | Enable/disable thinking (Haiku 4.5 only) |
 | `--fast-mode / --no-fast-mode` | Enable/disable fast mode (Opus 4.5/4.6 only) |
 | `--batch-size N` | Threads per batch |

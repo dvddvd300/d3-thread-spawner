@@ -1,0 +1,3 @@
+{"name": "gpt-55-standard-a", "prompt": "Task A for GPT 5.5. Replace this with the actual work item.", "new_branch": "d3ts/gpt-55-standard-a", "model": "gpt55", "access": "full", "effort": "xhigh", "service_tier": "standard"}
+{"name": "gpt-55-standard-b", "prompt": "Task B for GPT 5.5. Replace this with the actual work item.", "new_branch": "d3ts/gpt-55-standard-b", "model": "gpt55", "access": "full", "effort": "xhigh", "service_tier": "standard"}
+{"name": "opus-48-max", "prompt": "Task C for Claude Opus 4.8. Replace this with the actual work item.", "new_branch": "d3ts/opus-48-max", "model": "opus", "access": "full", "effort": "max"}

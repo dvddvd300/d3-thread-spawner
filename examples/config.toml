@@ -3,11 +3,11 @@
 # or to .d3ts.toml in your repo root for per-project settings.
 
 [general]
-model = "opus"                     # opus, sonnet, haiku, or full model ID
+model = "opus"                     # opus, sonnet, haiku, gpt55, or full model ID
 mode = "build"                     # build | plan (interaction mode)
 access = "full"                    # full | auto-accept | supervised (access level)
 effort = "high"                    # low | medium | high | xhigh | max | ultracode | ultrathink
-                                   #   (xhigh/ultracode/ultrathink require Opus 4.8;
+                                   #   (GPT supports xhigh; max/ultracode/ultrathink require Opus 4.8;
                                    #    T3 clamps unsupported values to the model default)
 base_branch = "main"               # default base branch for worktrees
 # repo_dir = "~/my-project"        # explicit repo path (default: CWD)
@@ -44,16 +44,24 @@ rebase_protected = false
 
 [models]
 # Define aliases for model IDs. Use these with --model flag.
+# Provider routing is automatic from the resolved model slug:
+#   claude-* -> T3 provider "claudeAgent"
+#   gpt-*    -> T3 provider "codex"
 # Opus 4.8 requires T3 Code's bundled Claude Code CLI >= 2.1.154.
 opus = "claude-opus-4-8"
 sonnet = "claude-sonnet-4-6"
 haiku = "claude-haiku-4-5"
+gpt55 = "gpt-5.5"
 
 [model_options]
-# These are filtered per model — d3 only sends options the chosen model supports:
-#   context_window → Opus 4.8/4.7/4.6, Sonnet 4.6   (200k or 1m; "1m" needs a 1M-capable model)
+# These are filtered per model/provider — d3 only sends options the chosen model supports.
+# JSONL tasks may override these per line with service_tier/context_window/thinking/fast_mode.
+#   service_tier   → GPT/Codex models that expose Standard/Fast
+#   context_window → Claude models that expose 200k/1m
 #   thinking       → Haiku 4.5 only
-#   fast_mode      → Opus 4.5/4.6 only
+#   fast_mode      → Claude models that expose Fast Mode
+# service_tier accepts standard/default or fast/priority.
+service_tier = "standard"          # standard/default or fast/priority
 context_window = "1m"              # 200k or 1m
 thinking = true
 fast_mode = false
