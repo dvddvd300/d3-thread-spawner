@@ -50,6 +50,7 @@ DEFAULTS = {
         "cookies_path": _default_cookies_path(),
         "runtime_json": "~/.t3/userdata/server-runtime.json",
         "state_db": "~/.t3/userdata/state.sqlite",
+        "secrets_dir": "~/.t3/userdata/secrets",
     },
     "worktree": {
         "dir": "~/d3ts-worktrees/{project}",
@@ -325,6 +326,14 @@ def load_config(cli_args=None) -> AgentSettings:
         config.get("t3", {}).get("cookies_path", DEFAULTS["t3"]["cookies_path"])
     ))
 
+    # Resolve T3 auth-session store paths (used to derive the session token)
+    t3_state_db = os.path.normpath(os.path.expanduser(
+        config.get("t3", {}).get("state_db", DEFAULTS["t3"]["state_db"])
+    ))
+    t3_secrets_dir = os.path.normpath(os.path.expanduser(
+        config.get("t3", {}).get("secrets_dir", DEFAULTS["t3"]["secrets_dir"])
+    ))
+
     gen = config.get("general", {})
     batch = config.get("batch", {})
     t3 = config.get("t3", {})
@@ -352,6 +361,8 @@ def load_config(cli_args=None) -> AgentSettings:
         t3_host=t3_host,
         t3_port=t3_port,
         t3_project_id=t3.get("project_id", ""),
+        t3_state_db=t3_state_db,
+        t3_secrets_dir=t3_secrets_dir,
         cookies_path=cookies_path,
         worktree_dir=wt_dir,
         github_repo=gh_repo,

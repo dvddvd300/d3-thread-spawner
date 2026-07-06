@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
 import json
 import os
 import sqlite3
 import time
 import uuid
+from datetime import datetime, timezone
 from typing import Optional
 
 from .models import AgentSettings, WorkItem
@@ -32,6 +36,152 @@ def auto_detect_t3_connection(runtime_json_path: str) -> tuple:
         )
     except (json.JSONDecodeError, KeyError) as e:
         raise RuntimeError(f"Could not parse {path}: {e}")
+
+
+SIGNING_KEY_FILENAME = "server-signing-key.bin"
+DEFAULT_STATE_DB = "~/.t3/userdata/state.sqlite"
+DEFAULT_SECRETS_DIR = "~/.t3/userdata/secrets"
+_ORCHESTRATION_OPERATE_SCOPE = "orchestration:operate"
+
+
+def _b64url_nopad(raw: bytes) -> str:
+    """base64url-encode without ``=`` padding (matches T3's token encoding)."""
+    return base64.urlsafe_b64encode(raw).rstrip(b"=").decode("ascii")
+
+
+def _iso_to_epoch_ms(value: str) -> int:
+    """Parse an ISO-8601 UTC timestamp (e.g. ``2026-07-06T15:33:34.020Z``) to
+    integer epoch milliseconds, matching JS ``DateTime.epochMilliseconds``.
+
+    Uses integer arithmetic (no float ``timestamp()``) so the millisecond
+    component round-trips exactly — the HMAC covers these digits.
+    """
+    text = value.strip()
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    dt = datetime.fromisoformat(text)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    delta = dt - datetime(1970, 1, 1, tzinfo=timezone.utc)
+    return (
+        delta.days * 86_400_000
+        + delta.seconds * 1000
+        + delta.microseconds // 1000
+    )
+
+
+def _reconstruct_session_token(row: dict, signing_secret: bytes) -> str:
+    """Rebuild the signed session token for an ``auth_sessions`` row.
+
+    T3 stores only the session *claims* (not the token) in the DB, but the
+    token is deterministic: ``base64url(JSON claims).base64url(HMAC-SHA256)``.
+    We recreate the exact claims JSON (key order + compact separators must match
+    T3's ``JSON.stringify``) and re-sign it with the server signing key, so
+    ``SessionCredentialService.verify()`` accepts it.
+    """
+    claims = {
+        "v": 1,
+        "kind": "session",
+        "sid": row["session_id"],
+        "sub": row["subject"],
+    }
+    # Newer builds carry a `scopes` array; older builds a single `role`.
+    if row.get("scopes") is not None:
+        claims["scopes"] = json.loads(row["scopes"])
+    elif row.get("role") is not None:
+        claims["role"] = row["role"]
+    claims["method"] = row["method"]
+    claims["iat"] = _iso_to_epoch_ms(row["issued_at"])
+    claims["exp"] = _iso_to_epoch_ms(row["expires_at"])
+
+    payload = json.dumps(claims, separators=(",", ":"), ensure_ascii=False)
+    encoded = _b64url_nopad(payload.encode("utf-8"))
+    signature = _b64url_nopad(
+        hmac.new(signing_secret, encoded.encode("ascii"), hashlib.sha256).digest()
+    )
+    return f"{encoded}.{signature}"
+
+
+def _token_from_state_db(state_db_path: str, secrets_dir: str) -> Optional[str]:
+    """Reconstruct a T3 session token from the ``auth_sessions`` store.
+
+    The updated T3 Code no longer writes a browser session cookie; its desktop
+    shell authenticates via a bootstrap-issued bearer session persisted in
+    ``state.sqlite``. We read the server signing key and the best usable session
+    (unrevoked, unexpired, non-DPoP, ideally with ``orchestration:operate``) and
+    re-sign its claims into a token the server will accept.
+
+    Returns None on any problem (missing files/table/session), so callers fall
+    back to the legacy cookie path.
+    """
+    key_path = os.path.expanduser(os.path.join(secrets_dir, SIGNING_KEY_FILENAME))
+    db_path = os.path.expanduser(state_db_path)
+    if not os.path.isfile(key_path) or not os.path.isfile(db_path):
+        return None
+
+    try:
+        with open(key_path, "rb") as f:
+            signing_secret = f.read()
+        if not signing_secret:
+            return None
+
+        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        try:
+            columns = {
+                c[1] for c in conn.execute("PRAGMA table_info(auth_sessions)")
+            }
+            if not columns:
+                return None
+            has_scopes = "scopes" in columns
+            has_role = "role" in columns
+
+            select_cols = ["session_id", "subject", "method", "issued_at", "expires_at"]
+            if has_scopes:
+                select_cols.insert(2, "scopes")
+            elif has_role:
+                select_cols.insert(2, "role")
+
+            rows = conn.execute(
+                f"SELECT {', '.join(select_cols)} FROM auth_sessions "
+                "WHERE revoked_at IS NULL AND method != 'dpop-access-token' "
+                "ORDER BY issued_at DESC"
+            ).fetchall()
+        finally:
+            conn.close()
+    except (sqlite3.Error, OSError, ValueError):
+        return None
+
+    now_ms = int(time.time() * 1000)
+    fallback: Optional[dict] = None
+    for raw in rows:
+        row = dict(zip(select_cols, raw))
+        try:
+            if _iso_to_epoch_ms(row["expires_at"]) <= now_ms:
+                continue
+        except (ValueError, TypeError):
+            continue
+        # Prefer a session that can actually drive orchestration; keep the first
+        # (newest) usable session as a fallback if none advertise the scope.
+        if has_scopes:
+            try:
+                scopes = json.loads(row["scopes"]) if row["scopes"] else []
+            except (ValueError, TypeError):
+                scopes = []
+            if _ORCHESTRATION_OPERATE_SCOPE not in scopes:
+                if fallback is None:
+                    fallback = row
+                continue
+        try:
+            return _reconstruct_session_token(row, signing_secret)
+        except (ValueError, TypeError, KeyError):
+            continue
+
+    if fallback is not None:
+        try:
+            return _reconstruct_session_token(fallback, signing_secret)
+        except (ValueError, TypeError, KeyError):
+            return None
+    return None
 
 
 def _token_from_cookies(cookies_path: str, port: int) -> Optional[str]:
@@ -63,50 +213,66 @@ def _token_from_cookies(cookies_path: str, port: int) -> Optional[str]:
     return None
 
 
-def get_t3_token(cookies_path: str, port: int) -> str:
-    """Extract T3 session token.
+def get_t3_token(
+    cookies_path: str,
+    port: int,
+    state_db: Optional[str] = None,
+    secrets_dir: Optional[str] = None,
+) -> str:
+    """Extract a T3 session token accepted by the local API.
 
     Resolution order:
-    1. D3TS_T3_TOKEN env var
-    2. Cookies SQLite DB (works on macOS; locked by Chromium on Windows)
+    1. D3TS_T3_TOKEN env var (explicit override)
+    2. Reconstruct from the ``auth_sessions`` store in ``state.sqlite`` + the
+       server signing key (the current T3 auth model — see below)
+    3. Legacy Cookies SQLite DB (older T3 builds that set a browser cookie)
 
-    On Windows the Cookies DB is exclusively locked by T3 Code, so the
-    token must be provided via D3TS_T3_TOKEN.
+    Recent T3 Code no longer persists a ``t3_session_{port}`` browser cookie;
+    the desktop authenticates via a bootstrap-issued bearer session recorded in
+    ``state.sqlite``. We rebuild a valid signed token from that session's claims
+    plus the raw signing key, which the server verifies identically to a token
+    it issued itself. The token works over either the ``Cookie`` header or
+    ``Authorization: Bearer``.
     """
-    import sys
-
     # Allow explicit token via env var
     env_token = os.environ.get("D3TS_T3_TOKEN")
     if env_token:
         log_verbose("🔑", "Using T3 token from D3TS_T3_TOKEN env var")
         return env_token
 
-    # Try Cookies DB (works on macOS; locked on Windows)
-    token = _token_from_cookies(cookies_path, port)
+    # Reconstruct from the auth_sessions store (current T3 auth model)
+    token = _token_from_state_db(
+        state_db or DEFAULT_STATE_DB,
+        secrets_dir or DEFAULT_SECRETS_DIR,
+    )
     if token:
+        log_verbose("🔑", "Reconstructed T3 token from auth_sessions store")
         return token
 
-    # Platform-specific guidance
-    db_path = os.path.expanduser(cookies_path)
-    if sys.platform == "win32" and os.path.isfile(db_path):
-        raise RuntimeError(
-            "T3 Cookies DB is locked by the running T3 Code process (Windows).\n"
-            "On Windows you must provide the session token manually:\n\n"
-            f"  1. Open http://127.0.0.1:{port} in your browser\n"
-            f"  2. Open DevTools (F12) > Application > Cookies > http://127.0.0.1:{port}\n"
-            f"  3. Copy the value of the 't3_session_{port}' cookie\n"
-            f"  4. Set it:  set D3TS_T3_TOKEN=<paste-value-here>\n"
-        )
+    # Legacy fallback: browser session cookie (older T3 builds)
+    token = _token_from_cookies(cookies_path, port)
+    if token:
+        log_verbose("🔑", "Using T3 token from legacy Cookies DB")
+        return token
 
-    if not os.path.isfile(db_path):
+    key_path = os.path.expanduser(
+        os.path.join(secrets_dir or DEFAULT_SECRETS_DIR, SIGNING_KEY_FILENAME)
+    )
+    state_db_path = os.path.expanduser(state_db or DEFAULT_STATE_DB)
+    if not os.path.isfile(state_db_path) or not os.path.isfile(key_path):
         raise RuntimeError(
-            f"T3 Cookies DB not found at {db_path}.\n"
-            "Is T3 Code installed? Set D3TS_T3_TOKEN env var as an alternative."
+            "Could not read a T3 session token.\n"
+            f"  - auth_sessions DB: {state_db_path} "
+            f"({'found' if os.path.isfile(state_db_path) else 'missing'})\n"
+            f"  - signing key: {key_path} "
+            f"({'found' if os.path.isfile(key_path) else 'missing'})\n"
+            "Is T3 Code installed and has it been signed in at least once?\n"
+            "Set D3TS_T3_TOKEN env var as an alternative."
         )
 
     raise RuntimeError(
-        "Could not read T3 session token from Cookies DB.\n"
-        "Is T3 Code running? Set D3TS_T3_TOKEN env var as an alternative."
+        "Could not derive a T3 session token from the auth_sessions store.\n"
+        "Is T3 Code running and signed in? Set D3TS_T3_TOKEN as an alternative."
     )
 
 

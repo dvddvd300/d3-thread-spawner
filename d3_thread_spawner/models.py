@@ -70,6 +70,10 @@ class AgentSettings:
     t3_host: str = "127.0.0.1"
     t3_port: int = 3773
     t3_project_id: str = ""
+    # Where T3 persists auth sessions + the signing key used to derive a
+    # session token (the current auth model — no browser cookie is written).
+    t3_state_db: str = "~/.t3/userdata/state.sqlite"
+    t3_secrets_dir: str = "~/.t3/userdata/secrets"
 
     # Worktree
     worktree_dir: str = ""
