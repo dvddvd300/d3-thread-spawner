@@ -284,6 +284,19 @@ re-checked once before the conflicting/clean split is finalized.
 d3-spawn status
 ```
 
+### `output` — View or wait for a thread's reply
+
+`spawn` dispatches a turn and returns a thread id but does not read the reply.
+`output` reads it back from T3's local state DB (read-only), so you can view or
+poll for what an agent produced. Accepts a full thread id or the short prefix
+`status` prints.
+
+```bash
+d3-spawn output 1a2b3c4d           # print the latest turn's assistant output
+d3-spawn output 1a2b3c4d --wait    # block until the turn finishes, then print
+d3-spawn output 1a2b3c4d --json    # machine-readable {state, text, ...}
+```
+
 ### `clean` — Remove worktrees and temp files
 
 ```bash

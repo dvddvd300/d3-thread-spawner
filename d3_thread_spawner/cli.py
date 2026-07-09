@@ -42,6 +42,7 @@ def build_parser() -> argparse.ArgumentParser:
               %(prog)s spawn "Refactor the auth middleware"
               %(prog)s spawn --file prompt.txt --name refactor-auth
               %(prog)s spawn --from-file tasks.jsonl --batch-size 10
+              %(prog)s output 1a2b3c4d --wait
               %(prog)s pr 58 --reviewer coderabbitai
               %(prog)s pr --open --mine
               %(prog)s review --open --mine
@@ -184,6 +185,37 @@ def build_parser() -> argparse.ArgumentParser:
     p_spawn.add_argument(
         "--fork-from",
         help="Branch to fork from (use with --new-branch; default: base branch)",
+    )
+
+    # ── output ──
+    p_output = subs.add_parser(
+        "output",
+        help="View or wait for a spawned thread's reply",
+        description=(
+            "Read back the assistant output of a thread spawned earlier. "
+            "`spawn` dispatches a turn and returns a thread id but does not read "
+            "the reply; this reads it from T3's local state DB (read-only)."
+        ),
+    )
+    p_output.add_argument(
+        "thread_id",
+        help="Thread id from `spawn`/`status` (full UUID or short prefix)",
+    )
+    p_output.add_argument(
+        "--wait", action="store_true",
+        help="Block until the current turn finishes (completed/error)",
+    )
+    p_output.add_argument(
+        "--timeout", type=float, default=600.0,
+        help="Max seconds to wait with --wait (default: 600)",
+    )
+    p_output.add_argument(
+        "--interval", type=float, default=3.0,
+        help="Seconds between polls with --wait (default: 3)",
+    )
+    p_output.add_argument(
+        "--json", action="store_true",
+        help="Emit the result (state + text) as JSON",
     )
 
     # ── pr ──
@@ -368,18 +400,22 @@ def main() -> int:
     if getattr(args, "force_rebase_protected", False):
         settings = replace(settings, conflict_rebase_protected=True)
 
-    # Verify repo exists (not needed for status/clean/config)
-    if args.command not in ("status", "clean", "config"):
+    # Verify repo exists (not needed for status/output/clean/config)
+    if args.command not in ("status", "output", "clean", "config"):
         git_dir = os.path.join(settings.repo_dir, ".git")
         if not os.path.exists(git_dir):
             log("❌", f"Not a git repo: {settings.repo_dir}")
             return 1
 
-    extra = f"  wait={settings.initial_wait}m" if settings.initial_wait > 0 else ""
-    log("⚙️ ", f"model={settings.model}  mode={settings.mode}  access={settings.access}  "
-        f"effort={settings.effort}  ctx={settings.context_window}{extra}")
+    # `output` launches no model and may emit machine-readable JSON on stdout, so
+    # skip the settings banner for it (keep it for every launching command).
+    if args.command != "output":
+        extra = f"  wait={settings.initial_wait}m" if settings.initial_wait > 0 else ""
+        log("⚙️ ", f"model={settings.model}  mode={settings.mode}  access={settings.access}  "
+            f"effort={settings.effort}  ctx={settings.context_window}{extra}")
 
     from .commands.spawn import cmd_spawn
+    from .commands.output import cmd_output
     from .commands.pr import cmd_pr
     from .commands.review import cmd_review
     from .commands.triage import cmd_triage
@@ -390,6 +426,7 @@ def main() -> int:
 
     handlers = {
         "spawn": cmd_spawn,
+        "output": cmd_output,
         "pr": cmd_pr,
         "review": cmd_review,
         "triage": cmd_triage,
