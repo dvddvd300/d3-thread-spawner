@@ -92,8 +92,9 @@ Answer `y` at the confirmation prompt. Check T3 Code, `./d3-spawn status`, and
   in `CLAUDE_MODEL_OPTIONS` or `CODEX_MODEL_OPTIONS`.
 - If T3 no longer advertises a built-in model, remove or update the alias that
   points to it.
-- Keep Codex efforts to actual `reasoningEffort` values only: `low`, `medium`,
-  `high`, `xhigh`.
+- Keep Codex efforts to actual `reasoningEffort` values from the cache. As of
+  2026-07-10, GPT-5.6 Sol/Terra add `max` and `ultra`; GPT-5.6 Luna adds
+  `max`. `ultra` is not Claude's `ultrathink`.
 - Do not add custom/new raw model ids to the static matrix until they have
   passed this ping-pong check.
 

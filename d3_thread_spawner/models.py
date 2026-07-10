@@ -30,7 +30,12 @@ CLAUDE_OPUS_4_6_EFFORTS: Tuple[str, ...] = (
     "low", "medium", "high", "max", "ultrathink",
 )
 CLAUDE_OPUS_4_5_EFFORTS: Tuple[str, ...] = ("low", "medium", "high", "max")
-CODEX_EFFORTS: Tuple[str, ...] = ("low", "medium", "high", "xhigh")
+# The order is used when an invalid effort must fall back to the maximum real
+# value. T3's GPT-5.6 variants extend the earlier Codex effort scale; this is
+# intentionally ``ultra``, not Claude's unrelated ``ultrathink``.
+CODEX_STANDARD_EFFORTS: Tuple[str, ...] = ("low", "medium", "high", "xhigh")
+CODEX_MAX_EFFORTS: Tuple[str, ...] = (*CODEX_STANDARD_EFFORTS, "max")
+CODEX_EFFORTS: Tuple[str, ...] = (*CODEX_MAX_EFFORTS, "ultra")
 CONTEXT_WINDOWS: Tuple[str, ...] = ("200k", "1m")
 SERVICE_TIERS: Tuple[str, ...] = ("default", "priority")
 
@@ -76,16 +81,18 @@ DEFAULT_CLAUDE_MODEL_OPTIONS: Dict[str, Tuple[str, ...]] = {
 }
 
 CODEX_MODEL_OPTIONS: Dict[str, Dict[str, Tuple[str, ...]]] = {
-    "gpt-5.5": {"reasoningEffort": CODEX_EFFORTS, "serviceTier": SERVICE_TIERS},
-    "gpt-5.4": {"reasoningEffort": CODEX_EFFORTS, "serviceTier": SERVICE_TIERS},
-    "gpt-5.4-mini": {"reasoningEffort": CODEX_EFFORTS},
-    "gpt-5.3-codex": {"reasoningEffort": CODEX_EFFORTS},
-    "gpt-5.2": {"reasoningEffort": CODEX_EFFORTS},
+    "gpt-5.6-sol": {"reasoningEffort": CODEX_EFFORTS, "serviceTier": SERVICE_TIERS},
+    "gpt-5.6-terra": {"reasoningEffort": CODEX_EFFORTS, "serviceTier": SERVICE_TIERS},
+    "gpt-5.6-luna": {"reasoningEffort": CODEX_MAX_EFFORTS, "serviceTier": SERVICE_TIERS},
+    "gpt-5.5": {"reasoningEffort": CODEX_STANDARD_EFFORTS, "serviceTier": SERVICE_TIERS},
+    "gpt-5.4": {"reasoningEffort": CODEX_STANDARD_EFFORTS, "serviceTier": SERVICE_TIERS},
+    "gpt-5.4-mini": {"reasoningEffort": CODEX_STANDARD_EFFORTS},
+    "gpt-5.3-codex": {"reasoningEffort": CODEX_STANDARD_EFFORTS},
+    "gpt-5.2": {"reasoningEffort": CODEX_STANDARD_EFFORTS},
 }
-DEFAULT_CODEX_MODEL_OPTIONS: Dict[str, Tuple[str, ...]] = {
-    "reasoningEffort": CODEX_EFFORTS,
-    "serviceTier": SERVICE_TIERS,
-}
+# Unknown model IDs must reach T3 unchanged. We cannot infer their supported
+# options safely when its metadata cache is unavailable.
+DEFAULT_CODEX_MODEL_OPTIONS: Dict[str, Tuple[str, ...]] = {}
 
 T3_CACHE_DIR = "~/.t3/caches"
 
@@ -391,8 +398,9 @@ class AgentSettings:
         self.validate_model_selection()
         supported = self._model_option_values()
         if self.provider == "codex":
-            # Codex option descriptors are ``reasoningEffort`` (low/medium/high/
-            # xhigh) and ``serviceTier`` — never Claude's effort/contextWindow/
+            # Codex option descriptors are ``reasoningEffort`` (model-specific,
+            # currently through ``ultra``) and ``serviceTier`` — never Claude's
+            # effort/contextWindow/
             # thinking/fastMode ids (contextWindow would corrupt the model id
             # into e.g. ``gpt-5.3-codex[1m]``). Invalid values normalize to the
             # highest real Codex effort.

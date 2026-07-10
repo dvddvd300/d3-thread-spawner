@@ -19,7 +19,9 @@ TEMPLATE = """\
 # model = "opus"              # opus, sonnet, haiku, mini, or full model ID
 # mode = "build"              # build (act immediately) or plan (propose first)
 # access = "full"             # full, auto-accept, supervised
-# effort = "high"             # Codex: low, medium, high, xhigh
+# effort = "high"             # Codex: low, medium, high, xhigh; GPT-5.6
+#                             #   Sol/Terra add max, ultra; Luna adds max
+#                             #   (never Claude's ultrathink)
 #                             # Claude: low, medium, high, xhigh, max,
 #                             #   ultracode, ultrathink; unsupported values
 #                             #   normalize to the model's max

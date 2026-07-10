@@ -463,6 +463,8 @@ model = "opus"              # opus, sonnet, haiku, mini, or full model ID
 mode = "build"              # build | plan (interaction mode)
 access = "full"             # full | auto-accept | supervised (access level)
 effort = "high"             # Codex: low | medium | high | xhigh
+                            # GPT-5.6 Sol/Terra also allow max | ultra;
+                            # Luna also allows max (never ultrathink)
                             # Claude: low | medium | high | xhigh | max | ultracode | ultrathink
 base_branch = "main"
 
@@ -603,7 +605,7 @@ d3-spawn [flags] <command> [command-flags]
 | `--model MODEL` | Model alias (`opus`→4.8, `sonnet`, `haiku`, `mini`→gpt-5.4-mini) or full ID |
 | `--mode MODE` | Interaction mode: build or plan |
 | `--access LEVEL` | Access level: full, auto-accept, or supervised |
-| `--effort LEVEL` | Codex: low, medium, high, xhigh. Claude: low, medium, high, xhigh, max, ultracode, ultrathink. Unsupported known-model values normalize to the model max |
+| `--effort LEVEL` | Codex values vary by model: low, medium, high, xhigh; GPT-5.6 Sol/Terra add max and ultra, Luna adds max. Claude: low, medium, high, xhigh, max, ultracode, ultrathink. Unsupported known-model values normalize to the model max |
 | `--context-window SIZE` | 200k or 1m; unsupported values normalize before launch |
 | `--thinking / --no-thinking` | Enable/disable thinking (Haiku 4.5 only) |
 | `--fast-mode / --no-fast-mode` | Enable/disable fast mode (Opus 4.5/4.6 only) |

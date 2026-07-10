@@ -48,6 +48,22 @@ class ModelSelectionOptionsTest(unittest.TestCase):
             {"id": "serviceTier", "value": "default"},
         ])
 
+    def test_gpt_5_6_sol_invalid_effort_normalizes_to_ultra(self):
+        settings = AgentSettings(model="gpt-5.6-sol", effort="mini")
+
+        self.assertEqual(settings.model_selection_options(), [
+            {"id": "reasoningEffort", "value": "ultra"},
+            {"id": "serviceTier", "value": "default"},
+        ])
+
+    def test_gpt_5_6_luna_invalid_effort_normalizes_to_max(self):
+        settings = AgentSettings(model="gpt-5.6-luna", effort="mini")
+
+        self.assertEqual(settings.model_selection_options(), [
+            {"id": "reasoningEffort", "value": "max"},
+            {"id": "serviceTier", "value": "default"},
+        ])
+
     def test_mini_alias_routes_to_codex_and_filters_service_tier(self):
         settings = AgentSettings(model="mini", effort="mini", context_window="1m")
 
@@ -165,6 +181,11 @@ class ModelSelectionOptionsTest(unittest.TestCase):
         settings = AgentSettings(model="claude-new-experimental")
 
         self.assertEqual(settings.resolved_model, "claude-new-experimental")
+        self.assertEqual(settings.model_selection_options(), [])
+
+    def test_unknown_gpt_passes_through_without_cache_option_assumptions(self):
+        settings = AgentSettings(model="gpt-new-experimental", effort="mini")
+
         self.assertEqual(settings.model_selection_options(), [])
 
     def test_cached_model_match_is_case_insensitive_for_gpt_slugs(self):
