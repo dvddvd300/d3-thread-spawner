@@ -60,8 +60,9 @@ def build_parser() -> argparse.ArgumentParser:
     # ── Global flags ──
     parser.add_argument(
         "--model", default=None,
-        help="Claude model alias or full ID "
-             "(default: opus → claude-opus-4-8; also: sonnet, haiku)",
+        help="Model alias or full ID. Claude aliases: opus → claude-opus-4-8 "
+             "(default), sonnet, haiku. gpt-* IDs route to the Codex provider "
+             "(e.g. gpt-5.5, gpt-5.4)",
     )
     parser.add_argument(
         "--mode", choices=["build", "plan"], default=None,

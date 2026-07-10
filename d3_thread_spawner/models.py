@@ -125,16 +125,35 @@ class AgentSettings:
         """Resolve model alias to full model ID."""
         return self.model_aliases.get(self.model, self.model)
 
+    @property
+    def provider(self) -> str:
+        """T3 provider instance for the resolved model (``gpt-*`` → codex)."""
+        return "codex" if self.resolved_model.startswith("gpt-") else "claudeAgent"
+
     def model_selection_options(self) -> List[Dict[str, Any]]:
         """Build the canonical ``[{id, value}]`` options array for T3.
 
         T3 Code expects ``modelSelection.options`` as an array of
-        ``{"id": ..., "value": ...}`` entries (migration 026). We emit only the
-        options the resolved model actually supports so we never send, e.g.,
-        ``contextWindow`` to a model that lacks it (which would corrupt the API
-        model id). Effort/thinking/fastMode are also filtered to the model's
-        capabilities; unsupported ids are simply omitted.
+        ``{"id": ..., "value": ...}`` entries (migration 026). Claude options
+        are filtered to the resolved model's capabilities so we never send,
+        e.g., ``contextWindow`` to a model that lacks it (which would corrupt
+        the API model id). Codex selections always pin ``serviceTier`` to
+        Standard because T3's provider default can be Fast.
         """
+        if self.provider == "codex":
+            # Codex option descriptors are ``reasoningEffort`` (low/medium/high/
+            # xhigh) and ``serviceTier`` — never Claude's effort/contextWindow/
+            # thinking/fastMode ids (contextWindow would corrupt the model id
+            # into e.g. ``gpt-5.3-codex[1m]``). Claude-only effort tiers clamp
+            # to xhigh; serviceTier=default is T3's Standard tier (not Fast).
+            codex_effort = {"ultracode": "xhigh", "ultrathink": "xhigh", "max": "xhigh"}
+            options: List[Dict[str, Any]] = [{"id": "serviceTier", "value": "default"}]
+            if self.effort:
+                options.insert(0, {
+                    "id": "reasoningEffort",
+                    "value": codex_effort.get(self.effort, self.effort),
+                })
+            return options
         supported = CLAUDE_MODEL_OPTIONS.get(
             self.resolved_model, DEFAULT_CLAUDE_MODEL_OPTIONS
         )
