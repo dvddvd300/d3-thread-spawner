@@ -3,12 +3,12 @@
 # or to .d3ts.toml in your repo root for per-project settings.
 
 [general]
-model = "opus"                     # opus, sonnet, haiku, or full model ID
+model = "opus"                     # opus, sonnet, haiku, mini, or full model ID
 mode = "build"                     # build | plan (interaction mode)
 access = "full"                    # full | auto-accept | supervised (access level)
-effort = "high"                    # low | medium | high | xhigh | max | ultracode | ultrathink
-                                   #   (xhigh/ultracode/ultrathink require Opus 4.8;
-                                   #    T3 clamps unsupported values to the model default)
+effort = "high"                    # Codex: low | medium | high | xhigh
+                                   # Claude: low | medium | high | xhigh | max | ultracode | ultrathink
+                                   # unsupported values normalize to the model's max
 base_branch = "main"               # default base branch for worktrees
 # repo_dir = "~/my-project"        # explicit repo path (default: CWD)
 
@@ -48,10 +48,12 @@ rebase_protected = false
 opus = "claude-opus-4-8"
 sonnet = "claude-sonnet-4-6"
 haiku = "claude-haiku-4-5"
+mini = "gpt-5.4-mini"
 
 [model_options]
-# These are filtered per model — d3 only sends options the chosen model supports:
-#   context_window → Opus 4.8/4.7/4.6, Sonnet 4.6   (200k or 1m; "1m" needs a 1M-capable model)
+# T3 provider metadata is preferred when available. d3 sends only supported
+# options and normalizes unsupported select values before launch:
+#   context_window → unsupported 1m falls back to 200k
 #   thinking       → Haiku 4.5 only
 #   fast_mode      → Opus 4.5/4.6 only
 context_window = "1m"              # 200k or 1m

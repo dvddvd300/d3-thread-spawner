@@ -12,6 +12,7 @@ Programmatic [T3 Code](https://t3.chat) thread launcher. Spawn Claude Code agent
 - **Full T3 settings control** — model, mode, effort, context window, thinking, fast mode
 - **Branch management** — work on existing branches or create new ones (with fork support)
 - **Batch processing** — launch 30+ tasks with configurable batch size and delays
+- **Plan approval** — freeze and approve captured T3 plans in quota-aware batches
 - **PR review** — fetch GitHub PR review threads and spawn agents to address them
 - **Local PR review** — spawn a reviewer thread per PR that generates a full review (verdict + paste-ready comments) you can read
 - **PR triage** — one-shot status report across all open PRs (conflicts, CI, reviews, ready)
@@ -29,10 +30,13 @@ Programmatic [T3 Code](https://t3.chat) thread launcher. Spawn Claude Code agent
 
 > **Models & effort.** The `opus` alias maps to **Claude Opus 4.8**, which needs
 > T3 Code's bundled Claude Code CLI **≥ 2.1.154** (Opus 4.7 needs ≥ 2.1.111).
-> Effort levels `xhigh`, `ultracode`, and `ultrathink` are Opus-4.8 features.
-> d3 sends only the options each model actually supports — `context_window`
-> (Opus 4.8/4.7/4.6, Sonnet 4.6), `thinking` (Haiku 4.5), `fast_mode`
-> (Opus 4.5/4.6) — and T3 clamps an unsupported effort to the model's default.
+> d3 prefers T3's cached provider metadata when present and sends only the
+> options each known model supports. If a configured alias/known built-in model
+> disappears from T3's cache, d3 fails before dispatch; raw custom/new model ids
+> pass through without option assumptions. Unsupported known-model effort values
+> normalize to the highest real effort; unsupported `context_window = "1m"`
+> falls back to `200k`. See [Model Validation](docs/model-validation.md) for the
+> monthly ping-pong test workflow.
 
 ## Quick Start
 
@@ -278,6 +282,131 @@ slow run.
 GitHub computes mergeability asynchronously, so PRs that report `UNKNOWN` are
 re-checked once before the conflicting/clean split is finalized.
 
+### `approve-plans` — Schedule captured plans for implementation
+
+`approve-plans` freezes the selected actionable plans before it waits, then uses
+T3's native plan-implementation turn in configurable batches. Full thread ids or
+unique prefixes are accepted in the exact order supplied; with no ids it freezes
+all currently actionable plans in the selected project.
+
+#### 1. Preview the available plans
+
+Start with a dry run. This is also the easiest way to discover the short thread
+ids: it reads T3's current project state and prints the exact manifest without
+waiting, authenticating, or approving anything.
+
+```bash
+d3-spawn --repo /path/to/repo --dry-run approve-plans
+```
+
+Targeting by T3 project id works too and does not require a local Git checkout:
+
+```bash
+d3-spawn --project-id PROJECT_UUID --dry-run approve-plans
+```
+
+#### 2. Choose the order and pacing
+
+Pass the printed thread ids in the order they should run. Global batch flags
+must appear **before** `approve-plans`; command-specific flags go after it.
+
+```bash
+# Approve now: five plans, wait ten minutes, check quota, then continue
+d3-spawn --repo /path/to/repo \
+  --batch-size 5 --batch-delay 10 --launch-delay 0.5 \
+  approve-plans abc12345 def67890 0123abcd --quota-threshold 90
+```
+
+The interactive confirmation prints and freezes the complete manifest. Passing
+`--yes` confirms it without a prompt, which is required for unattended runs.
+Omit thread ids only when every actionable plan in the project should be
+approved; the list is still frozen before any wait begins.
+
+#### 3. Schedule the first batch
+
+Use an offset-aware ISO 8601 timestamp for an absolute start time:
+
+```bash
+d3-spawn --repo /path/to/repo \
+  --batch-size 5 --batch-delay 10 --launch-delay 0.5 \
+  approve-plans abc12345 def67890 0123abcd \
+  --start-at 2026-07-10T02:50:00-06:00 \
+  --quota-threshold 90 --yes
+```
+
+A past `--start-at` starts immediately. For a relative delay, use the global
+`--initial-wait` flag instead:
+
+```bash
+d3-spawn --repo /path/to/repo \
+  --initial-wait 161 --batch-size 5 --batch-delay 10 \
+  approve-plans abc12345 def67890 --quota-threshold 90 --yes
+```
+
+`--start-at` and `--initial-wait` are mutually exclusive.
+
+#### Quota and safety behavior
+
+After each non-final batch, d3 waits `--batch-delay` minutes and reads fresh
+Claude `account.rate-limits.updated` events from T3's local provider logs. The
+next batch starts only when all safety checks pass.
+
+| Condition | Result |
+|---|---|
+| Five-hour utilization is below `--quota-threshold` | Continue |
+| Quota is rejected or reaches the threshold | Stop; leave remaining plans untouched |
+| No fresh Claude quota signal exists | Stop instead of guessing |
+| A linked implementation turn errors | Stop subsequent batches |
+| A frozen plan was changed or manually approved | Skip it; never substitute a newer plan |
+| A thread is already running or starting | Skip it; never interrupt the thread |
+
+The command does not wait for another quota reset after a safety stop. Run a new
+dry run later; already implemented plans disappear from the actionable list, so
+you can schedule only the remaining ids.
+
+#### Running unattended and monitoring
+
+The command normally stays in the foreground and prints the countdown, each
+approval, quota decisions, and its final approved/skipped/failed/remaining
+summary. Keep that terminal open, use `tmux`/`screen`, or detach it from a normal
+user shell while saving a log:
+
+```bash
+mkdir -p ~/.config/d3ts/logs
+PYTHONUNBUFFERED=1 nohup d3-spawn --repo /path/to/repo \
+  --batch-size 5 --batch-delay 10 --launch-delay 0.5 \
+  approve-plans abc12345 def67890 0123abcd \
+  --start-at 2026-07-10T02:50:00-06:00 \
+  --quota-threshold 90 --yes \
+  > ~/.config/d3ts/logs/approve-plans.log 2>&1 &
+pid=$!
+```
+
+Monitor or cancel that detached process with:
+
+```bash
+tail -f ~/.config/d3ts/logs/approve-plans.log
+kill "$pid"
+```
+
+T3 Code and the machine must remain running. System sleep delays the process
+until the machine wakes; closing T3 before dispatch makes the command fail
+safely without marking the plan implemented.
+
+#### Options
+
+| Option | Meaning |
+|---|---|
+| `THREAD_REF ...` | Ordered full thread ids or unique prefixes; default is all actionable plans |
+| `--start-at TIME` | Offset-aware absolute time for the first batch |
+| `--quota-threshold PERCENT` | Stop at this five-hour utilization; default `90` |
+| `--yes` | Confirm the frozen manifest without prompting |
+| Global `--batch-size N` | Plans per batch; default `5` |
+| Global `--batch-delay M` | Minutes between non-final batches |
+| Global `--launch-delay S` | Seconds between approvals within a batch |
+| Global `--initial-wait M` | Relative minutes before the first batch |
+| Global `--dry-run` | Print the frozen manifest without waits or mutations |
+
 ### `status` — Show active threads
 
 ```bash
@@ -330,10 +459,11 @@ Create with `d3-spawn config --init` or manually:
 # .d3ts.toml (in your repo root)
 
 [general]
-model = "opus"              # opus, sonnet, haiku, or full model ID
+model = "opus"              # opus, sonnet, haiku, mini, or full model ID
 mode = "build"              # build | plan (interaction mode)
 access = "full"             # full | auto-accept | supervised (access level)
-effort = "high"             # low | medium | high | xhigh | max | ultracode | ultrathink
+effort = "high"             # Codex: low | medium | high | xhigh
+                            # Claude: low | medium | high | xhigh | max | ultracode | ultrathink
 base_branch = "main"
 
 [batch]
@@ -374,9 +504,10 @@ strategy = "merge"          # "merge" (base into branch) or "rebase" (onto base)
 opus = "claude-opus-4-8"    # needs T3's Claude Code CLI >= 2.1.154
 sonnet = "claude-sonnet-4-6"
 haiku = "claude-haiku-4-5"
+mini = "gpt-5.4-mini"
 
 [model_options]
-context_window = "1m"       # 200k or 1m (Opus 4.8/4.7/4.6 + Sonnet 4.6)
+context_window = "1m"       # 1m when supported; otherwise d3 uses 200k
 thinking = true             # Haiku 4.5 only
 fast_mode = false           # Opus 4.5/4.6 only
 ```
@@ -431,6 +562,9 @@ For launching many tasks, create a JSONL file (one JSON object per line):
 | `mode` | no | Override interaction mode (build/plan) |
 | `access` | no | Override access level (full/auto-accept/supervised) |
 | `effort` | no | Override effort for this task |
+| `context_window` | no | Override context window for this task |
+| `thinking` | no | Override thinking for this task |
+| `fast_mode` | no | Override fast mode for this task |
 
 Launch with:
 
@@ -466,11 +600,11 @@ d3-spawn [flags] <command> [command-flags]
 
 | Flag | Description |
 |------|-------------|
-| `--model MODEL` | Claude model alias (`opus`→4.8, `sonnet`, `haiku`) or full ID |
+| `--model MODEL` | Model alias (`opus`→4.8, `sonnet`, `haiku`, `mini`→gpt-5.4-mini) or full ID |
 | `--mode MODE` | Interaction mode: build or plan |
 | `--access LEVEL` | Access level: full, auto-accept, or supervised |
-| `--effort LEVEL` | low, medium, high, xhigh, max, ultracode, or ultrathink |
-| `--context-window SIZE` | 200k or 1m (Opus 4.8/4.7/4.6, Sonnet 4.6) |
+| `--effort LEVEL` | Codex: low, medium, high, xhigh. Claude: low, medium, high, xhigh, max, ultracode, ultrathink. Unsupported known-model values normalize to the model max |
+| `--context-window SIZE` | 200k or 1m; unsupported values normalize before launch |
 | `--thinking / --no-thinking` | Enable/disable thinking (Haiku 4.5 only) |
 | `--fast-mode / --no-fast-mode` | Enable/disable fast mode (Opus 4.5/4.6 only) |
 | `--batch-size N` | Threads per batch |
@@ -480,7 +614,7 @@ d3-spawn [flags] <command> [command-flags]
 | `--base-branch BRANCH` | Base git branch |
 | `--repo PATH` | Path to repository |
 | `--project-id UUID` | T3 project ID |
-| `--dry-run` | Preview without launching |
+| `--dry-run` | Preview without launching or approving |
 | `--verbose / -v` | Verbose output |
 | `--config PATH` | Explicit config file |
 

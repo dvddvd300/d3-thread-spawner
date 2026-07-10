@@ -17,6 +17,9 @@ def launch_batch(items: List[WorkItem], settings: AgentSettings) -> Tuple[int, i
         log("⚠️ ", "Nothing to launch.")
         return 0, 0
 
+    for item in items:
+        item.settings.validate_model_selection()
+
     total = len(items)
     bs = settings.batch_size
     total_batches = (total + bs - 1) // bs
@@ -36,10 +39,12 @@ def launch_batch(items: List[WorkItem], settings: AgentSettings) -> Tuple[int, i
                 branch_info = f"→ NEW {item.branch} (from {src})"
 
             print(
-                f"  [{s.model}|{s.mode}|{s.access}|{s.effort}|"
-                f"ctx:{s.context_window}] "
+                f"  [{s.model}→{s.resolved_model}|{s.mode}|{s.access}|"
+                f"{s.effective_effort() or '-'}|ctx:{s.effective_context_window()}] "
                 f"{item.name} {branch_info}"
             )
+            for note in s.model_selection_adjustments():
+                print(f"    adjusted: {note}")
             opts = ", ".join(
                 f"{o['id']}={o['value']}" for o in s.model_selection_options()
             )
@@ -94,6 +99,8 @@ def launch_batch(items: List[WorkItem], settings: AgentSettings) -> Tuple[int, i
 
         for item in batch:
             try:
+                for note in item.settings.model_selection_adjustments():
+                    log("↪ ", f"{item.name}: {note}")
                 thread_id = launch_t3(item, t3_token)
                 log("🚀", f"{item.name} → {item.branch} (thread: {thread_id[:8]}...)")
                 created += 1

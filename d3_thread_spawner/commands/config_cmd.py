@@ -16,11 +16,13 @@ TEMPLATE = """\
 # See: https://github.com/dvddvd300/d3-thread-spawner
 
 [general]
-# model = "opus"              # opus, sonnet, haiku, or full model ID
+# model = "opus"              # opus, sonnet, haiku, mini, or full model ID
 # mode = "build"              # build (act immediately) or plan (propose first)
 # access = "full"             # full, auto-accept, supervised
-# effort = "high"             # low, medium, high, xhigh, max, ultracode, ultrathink
-#                             #   (xhigh/ultracode/ultrathink require Opus 4.8)
+# effort = "high"             # Codex: low, medium, high, xhigh
+#                             # Claude: low, medium, high, xhigh, max,
+#                             #   ultracode, ultrathink; unsupported values
+#                             #   normalize to the model's max
 # base_branch = "main"        # default base branch for new worktrees
 # repo_dir = "."              # "." = auto-detect from CWD
 
@@ -65,10 +67,12 @@ TEMPLATE = """\
 # opus = "claude-opus-4-8"
 # sonnet = "claude-sonnet-4-6"
 # haiku = "claude-haiku-4-5"
+# mini = "gpt-5.4-mini"
 
 [model_options]
-# Sent only when the chosen model supports them:
-#   context_window → Opus 4.8/4.7/4.6, Sonnet 4.6 (haiku/opus-4.5 ignore it)
+# T3 provider metadata is preferred when available. d3 sends only supported
+# options and normalizes unsupported select values before launch:
+#   context_window → unsupported 1m falls back to 200k
 #   thinking       → Haiku 4.5 only
 #   fast_mode      → Opus 4.5/4.6 only
 # context_window = "1m"       # 200k or 1m

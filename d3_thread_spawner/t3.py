@@ -329,6 +329,7 @@ def launch_t3(item: WorkItem, token: str) -> str:
     Returns the thread ID.
     """
     s = item.settings
+    s.validate_model_selection()
     now = iso_now()
 
     project_id = resolve_project_id(s)

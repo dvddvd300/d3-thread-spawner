@@ -21,7 +21,8 @@ def _load_jsonl(path: str, settings: AgentSettings) -> List[WorkItem]:
       raw (optional bool, default false — send the prompt verbatim instead of
         wrapping it in the default spawn template; use for prompts that already
         contain their own full workflow),
-      optional overrides: model, mode, effort
+      optional overrides: model, mode, access, effort, context_window, thinking,
+      fast_mode
     """
     expanded = os.path.expanduser(path)
     if not os.path.isfile(expanded):
@@ -68,9 +69,9 @@ def _load_jsonl(path: str, settings: AgentSettings) -> List[WorkItem]:
                 effort=entry.get("effort", settings.effort),
                 base_branch=settings.base_branch,
                 repo_dir=settings.repo_dir,
-                context_window=settings.context_window,
-                thinking=settings.thinking,
-                fast_mode=settings.fast_mode,
+                context_window=entry.get("context_window", settings.context_window),
+                thinking=entry.get("thinking", settings.thinking),
+                fast_mode=entry.get("fast_mode", settings.fast_mode),
                 batch_size=settings.batch_size,
                 batch_delay=settings.batch_delay,
                 launch_delay=settings.launch_delay,
