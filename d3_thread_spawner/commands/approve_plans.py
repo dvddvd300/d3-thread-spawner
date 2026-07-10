@@ -252,4 +252,3 @@ def cmd_approve_plans(args, settings: AgentSettings) -> None:
         log("✅", f"Quota gate passed — {quota.reason} ({quota.signal_count} signals)")
 
     _print_summary(plans, results, halted_reason)
-

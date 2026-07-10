@@ -482,4 +482,3 @@ def batch_turn_errors(
     finally:
         conn.close()
     return errors
-
