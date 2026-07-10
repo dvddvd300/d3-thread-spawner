@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import json
+import os
 from dataclasses import dataclass, field, replace
-from typing import Any, Dict, List, Optional
+from functools import lru_cache
+from typing import Any, Dict, List, Optional, Tuple
 
 
 # Per-model option capabilities for the claudeAgent provider.
@@ -17,19 +20,172 @@ from typing import Any, Dict, List, Optional
 # capabilities — so sending contextWindow to a model that lacks it (haiku,
 # opus-4-5) would produce an invalid model id like `claude-haiku-4-5[1m]`.
 # We therefore emit only the options each model actually supports.
-CLAUDE_MODEL_OPTIONS: Dict[str, frozenset] = {
-    "claude-opus-4-8": frozenset({"effort", "contextWindow"}),
-    "claude-opus-4-7": frozenset({"effort", "contextWindow"}),
-    "claude-opus-4-6": frozenset({"effort", "fastMode", "contextWindow"}),
-    "claude-opus-4-5": frozenset({"effort", "fastMode"}),
-    "claude-sonnet-4-6": frozenset({"effort", "contextWindow"}),
-    "claude-haiku-4-5": frozenset({"thinking"}),
+CLAUDE_EFFORTS: Tuple[str, ...] = (
+    "low", "medium", "high", "xhigh", "max", "ultracode", "ultrathink",
+)
+CLAUDE_OPUS_4_7_EFFORTS: Tuple[str, ...] = (
+    "low", "medium", "high", "xhigh", "max", "ultrathink",
+)
+CLAUDE_OPUS_4_6_EFFORTS: Tuple[str, ...] = (
+    "low", "medium", "high", "max", "ultrathink",
+)
+CLAUDE_OPUS_4_5_EFFORTS: Tuple[str, ...] = ("low", "medium", "high", "max")
+CODEX_EFFORTS: Tuple[str, ...] = ("low", "medium", "high", "xhigh")
+CONTEXT_WINDOWS: Tuple[str, ...] = ("200k", "1m")
+SERVICE_TIERS: Tuple[str, ...] = ("default", "priority")
+
+CLAUDE_MODEL_OPTIONS: Dict[str, Dict[str, Tuple[str, ...]]] = {
+    "claude-fable-5": {
+        "effort": CLAUDE_EFFORTS,
+        "contextWindow": CONTEXT_WINDOWS,
+    },
+    "claude-opus-4-8": {
+        "effort": CLAUDE_EFFORTS,
+        "contextWindow": CONTEXT_WINDOWS,
+    },
+    "claude-opus-4-7": {
+        "effort": CLAUDE_OPUS_4_7_EFFORTS,
+        "contextWindow": CONTEXT_WINDOWS,
+    },
+    "claude-opus-4-6": {
+        "effort": CLAUDE_OPUS_4_6_EFFORTS,
+        "fastMode": (),
+        "contextWindow": CONTEXT_WINDOWS,
+    },
+    "claude-opus-4-5": {
+        "effort": CLAUDE_OPUS_4_5_EFFORTS,
+        "fastMode": (),
+    },
+    "claude-sonnet-5": {
+        "effort": CLAUDE_OPUS_4_7_EFFORTS,
+        "contextWindow": CONTEXT_WINDOWS,
+    },
+    "claude-sonnet-4-6": {
+        "effort": CLAUDE_OPUS_4_6_EFFORTS,
+        "contextWindow": CONTEXT_WINDOWS,
+    },
+    "claude-haiku-4-5": {"thinking": ()},
 }
 
 # Fallback for custom / unknown model slugs: the modern Claude default of
 # effort + contextWindow. A custom model that doesn't support a 1M window
 # should set context_window = "200k" (which never suffixes the model id).
-DEFAULT_CLAUDE_MODEL_OPTIONS: frozenset = frozenset({"effort", "contextWindow"})
+DEFAULT_CLAUDE_MODEL_OPTIONS: Dict[str, Tuple[str, ...]] = {
+    "effort": CLAUDE_EFFORTS,
+    "contextWindow": CONTEXT_WINDOWS,
+}
+
+CODEX_MODEL_OPTIONS: Dict[str, Dict[str, Tuple[str, ...]]] = {
+    "gpt-5.5": {"reasoningEffort": CODEX_EFFORTS, "serviceTier": SERVICE_TIERS},
+    "gpt-5.4": {"reasoningEffort": CODEX_EFFORTS, "serviceTier": SERVICE_TIERS},
+    "gpt-5.4-mini": {"reasoningEffort": CODEX_EFFORTS},
+    "gpt-5.3-codex": {"reasoningEffort": CODEX_EFFORTS},
+    "gpt-5.2": {"reasoningEffort": CODEX_EFFORTS},
+}
+DEFAULT_CODEX_MODEL_OPTIONS: Dict[str, Tuple[str, ...]] = {
+    "reasoningEffort": CODEX_EFFORTS,
+    "serviceTier": SERVICE_TIERS,
+}
+
+T3_CACHE_DIR = "~/.t3/caches"
+
+
+def _option_values_from_descriptor(descriptor: Dict[str, Any]) -> Tuple[str, ...]:
+    """Return select option ids from a T3 provider option descriptor."""
+    values = descriptor.get("options")
+    if not isinstance(values, list):
+        return ()
+    ids = []
+    for value in values:
+        if isinstance(value, dict) and isinstance(value.get("id"), str):
+            ids.append(value["id"])
+    return tuple(ids)
+
+
+@lru_cache(maxsize=None)
+def _cached_provider_model_options(
+    provider: str,
+) -> Optional[Dict[str, Dict[str, Tuple[str, ...]]]]:
+    """Load T3's cached provider metadata, if present.
+
+    Returning None means "cache unavailable, use built-in fallbacks." Returning
+    a dict means "T3 has advertised this provider's model list," so an absent
+    model can be treated as a real configuration error before we dispatch.
+    """
+    path = os.path.expanduser(os.path.join(T3_CACHE_DIR, f"{provider}.json"))
+    if not os.path.isfile(path):
+        return None
+
+    try:
+        with open(path) as f:
+            data = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return None
+
+    result: Dict[str, Dict[str, Tuple[str, ...]]] = {}
+    models = data.get("models")
+    if not isinstance(models, list):
+        return None
+
+    for model in models:
+        if not isinstance(model, dict):
+            continue
+        slug = model.get("slug")
+        if not isinstance(slug, str) or not slug:
+            continue
+        descriptors = (
+            model.get("capabilities", {}).get("optionDescriptors", [])
+            if isinstance(model.get("capabilities"), dict)
+            else []
+        )
+        options: Dict[str, Tuple[str, ...]] = {}
+        if isinstance(descriptors, list):
+            for descriptor in descriptors:
+                if not isinstance(descriptor, dict):
+                    continue
+                option_id = descriptor.get("id")
+                if isinstance(option_id, str) and option_id:
+                    options[option_id] = _option_values_from_descriptor(descriptor)
+        result[slug] = options
+
+    return result or None
+
+
+def _cached_model_id(provider: str, model: str) -> Optional[str]:
+    cached = _cached_provider_model_options(provider)
+    if not cached:
+        return None
+    if model in cached:
+        return model
+    lower = model.lower()
+    for candidate in cached:
+        if candidate.lower() == lower:
+            return candidate
+    return None
+
+
+def _max_known_value(values: Tuple[str, ...], order: Tuple[str, ...]) -> Optional[str]:
+    """Pick the largest supported value according to our known ordering."""
+    if not values:
+        return None
+    ordered = [value for value in order if value in values]
+    return ordered[-1] if ordered else values[-1]
+
+
+def _normalize_select(
+    requested: str,
+    values: Tuple[str, ...],
+    order: Tuple[str, ...],
+) -> Optional[str]:
+    if not requested or not values:
+        return None
+    if requested in values:
+        return requested
+    return _max_known_value(values, order)
+
+
+def _is_known_builtin_model(model: str) -> bool:
+    return model in CLAUDE_MODEL_OPTIONS or model in CODEX_MODEL_OPTIONS
 
 
 # Shared/long-lived integration branches that must NEVER be rebased + force-pushed.
@@ -114,6 +270,7 @@ class AgentSettings:
         "opus": "claude-opus-4-8",
         "sonnet": "claude-sonnet-4-6",
         "haiku": "claude-haiku-4-5",
+        "mini": "gpt-5.4-mini",
     })
 
     @property
@@ -121,28 +278,144 @@ class AgentSettings:
         return f"http://{self.t3_host}:{self.t3_port}"
 
     @property
+    def _alias_model(self) -> str:
+        return self.model_aliases.get(self.model, self.model)
+
+    @property
     def resolved_model(self) -> str:
         """Resolve model alias to full model ID."""
-        return self.model_aliases.get(self.model, self.model)
+        return _cached_model_id(self.provider, self._alias_model) or self._alias_model
+
+    @property
+    def provider(self) -> str:
+        """T3 provider instance for the resolved model (``gpt-*`` → codex)."""
+        return "codex" if self._alias_model.lower().startswith("gpt-") else "claudeAgent"
+
+    def _model_option_values(self) -> Dict[str, Tuple[str, ...]]:
+        cached = _cached_provider_model_options(self.provider)
+        if cached is not None:
+            model_id = self.resolved_model
+            if model_id in cached:
+                return cached[model_id]
+            return {}
+        if self.provider == "codex":
+            return CODEX_MODEL_OPTIONS.get(
+                self.resolved_model, DEFAULT_CODEX_MODEL_OPTIONS
+            )
+        return CLAUDE_MODEL_OPTIONS.get(
+            self.resolved_model, DEFAULT_CLAUDE_MODEL_OPTIONS
+        )
+
+    def validate_model_selection(self) -> None:
+        """Fail when a configured built-in alias/model is absent from T3's cache.
+
+        Raw custom/new model ids are allowed through with no option assumptions;
+        T3 may know about a model before this repository's static fallback table
+        does. For aliases and known built-in ids, however, an absent cache entry
+        means our local config points at a model T3 is not advertising.
+        """
+        cached = _cached_provider_model_options(self.provider)
+        if cached is None or self.resolved_model in cached:
+            return
+        if self.model not in self.model_aliases and not _is_known_builtin_model(self._alias_model):
+            return
+        available = ", ".join(sorted(cached))
+        raise RuntimeError(
+            f"Configured {self.provider} model {self.model!r} resolves to "
+            f"{self.resolved_model!r}, but T3 is not advertising it. "
+            f"Available models: {available}"
+        )
+
+    def effective_effort(self) -> Optional[str]:
+        """Return the effort value that will actually be sent, if any."""
+        supported = self._model_option_values()
+        if self.provider == "codex":
+            values = supported.get("reasoningEffort", ())
+            return _normalize_select(self.effort, values, CODEX_EFFORTS)
+        return _normalize_select(
+            self.effort, supported.get("effort", ()), CLAUDE_EFFORTS
+        )
+
+    def effective_context_window(self) -> str:
+        """Return the effective context window.
+
+        A missing ``contextWindow`` option means T3 will use the model's default
+        API id with no ``[1m]`` suffix, which is the safe 200k path.
+        """
+        supported = self._model_option_values()
+        if self.provider == "codex" or "contextWindow" not in supported:
+            return "200k"
+        return _normalize_select(
+            self.context_window, supported.get("contextWindow", ()), CONTEXT_WINDOWS
+        ) or "200k"
+
+    def model_selection_adjustments(self) -> List[str]:
+        """Human-readable notes for settings that were normalized."""
+        supported = self._model_option_values()
+        notes: List[str] = []
+        effort = self.effective_effort()
+
+        if self.provider == "codex":
+            if self.effort and not supported.get("reasoningEffort"):
+                notes.append(f"{self.resolved_model} has no reasoning effort option")
+            elif effort and self.effort != effort:
+                notes.append(f"effort={self.effort} normalized to {effort}")
+        else:
+            if self.effort and "effort" not in supported:
+                notes.append(f"{self.resolved_model} has no effort option")
+            elif effort and self.effort != effort:
+                notes.append(f"effort={self.effort} normalized to {effort}")
+
+            context = self.effective_context_window()
+            if self.context_window and "contextWindow" not in supported:
+                if self.context_window != context:
+                    notes.append(f"context_window={self.context_window} normalized to {context}")
+            elif self.context_window and self.context_window != context:
+                notes.append(f"context_window={self.context_window} normalized to {context}")
+
+            if self.fast_mode and "fastMode" not in supported:
+                notes.append(f"{self.resolved_model} has no fast_mode option")
+
+        return notes
 
     def model_selection_options(self) -> List[Dict[str, Any]]:
         """Build the canonical ``[{id, value}]`` options array for T3.
 
         T3 Code expects ``modelSelection.options`` as an array of
-        ``{"id": ..., "value": ...}`` entries (migration 026). We emit only the
-        options the resolved model actually supports so we never send, e.g.,
-        ``contextWindow`` to a model that lacks it (which would corrupt the API
-        model id). Effort/thinking/fastMode are also filtered to the model's
-        capabilities; unsupported ids are simply omitted.
+        ``{"id": ..., "value": ...}`` entries (migration 026). Claude options
+        are filtered to the resolved model's capabilities so we never send,
+        e.g., ``contextWindow`` to a model that lacks it (which would corrupt
+        the API model id). Codex selections always pin ``serviceTier`` to
+        Standard because T3's provider default can be Fast.
         """
-        supported = CLAUDE_MODEL_OPTIONS.get(
-            self.resolved_model, DEFAULT_CLAUDE_MODEL_OPTIONS
-        )
+        self.validate_model_selection()
+        supported = self._model_option_values()
+        if self.provider == "codex":
+            # Codex option descriptors are ``reasoningEffort`` (low/medium/high/
+            # xhigh) and ``serviceTier`` — never Claude's effort/contextWindow/
+            # thinking/fastMode ids (contextWindow would corrupt the model id
+            # into e.g. ``gpt-5.3-codex[1m]``). Invalid values normalize to the
+            # highest real Codex effort.
+            options: List[Dict[str, Any]] = []
+            effort = self.effective_effort()
+            if effort:
+                options.append({
+                    "id": "reasoningEffort",
+                    "value": effort,
+                })
+            if "serviceTier" in supported:
+                # serviceTier=default is T3's Standard tier (not Fast).
+                options.append({"id": "serviceTier", "value": "default"})
+            return options
         options: List[Dict[str, Any]] = []
-        if "effort" in supported and self.effort:
-            options.append({"id": "effort", "value": self.effort})
-        if "contextWindow" in supported and self.context_window:
-            options.append({"id": "contextWindow", "value": self.context_window})
+        effort = self.effective_effort()
+        if "effort" in supported and effort:
+            options.append({"id": "effort", "value": effort})
+        if "contextWindow" in supported:
+            options.append({
+                "id": "contextWindow",
+                "value": self.effective_context_window(),
+            })
         if "fastMode" in supported:
             options.append({"id": "fastMode", "value": self.fast_mode})
         if "thinking" in supported:

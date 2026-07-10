@@ -48,6 +48,7 @@ def build_parser() -> argparse.ArgumentParser:
               %(prog)s review --open --mine
               %(prog)s triage
               %(prog)s conflicts
+              %(prog)s approve-plans --start-at 2026-07-10T02:50:00-06:00 --yes
               %(prog)s status
               %(prog)s config --init
         """),
@@ -60,8 +61,9 @@ def build_parser() -> argparse.ArgumentParser:
     # ── Global flags ──
     parser.add_argument(
         "--model", default=None,
-        help="Claude model alias or full ID "
-             "(default: opus → claude-opus-4-8; also: sonnet, haiku)",
+        help="Model alias or full ID. Aliases: opus → claude-opus-4-8 "
+             "(default), sonnet, haiku, mini → gpt-5.4-mini. gpt-* IDs route "
+             "to the Codex provider (e.g. gpt-5.5, gpt-5.4)",
     )
     parser.add_argument(
         "--mode", choices=["build", "plan"], default=None,
@@ -75,15 +77,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--effort",
-        choices=["low", "medium", "high", "xhigh", "max", "ultracode", "ultrathink"],
         default=None,
         help="Reasoning effort (default: high). Availability varies by model — "
-             "xhigh/ultracode/ultrathink need Opus 4.8; unsupported values are "
-             "clamped to the model's default by T3.",
+             "unsupported or unknown values are normalized to the highest real "
+             "effort for the chosen model before launch.",
     )
     parser.add_argument(
-        "--context-window", choices=["200k", "1m"], default=None,
-        help="Context window size (default: 1m)",
+        "--context-window", default=None,
+        help="Context window size (default: 1m). Unsupported values normalize "
+             "to the largest context the chosen model exposes; models without "
+             "context-window support use 200k.",
     )
     parser.add_argument(
         "--thinking", action="store_true", default=None, dest="thinking",
@@ -350,6 +353,32 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_conflict_strategy_flags(p_conflicts)
 
+    # ── approve-plans ──
+    p_approve = subs.add_parser(
+        "approve-plans",
+        help="Approve captured T3 plans in quota-aware batches",
+        description=(
+            "Freeze actionable proposed plans for the selected T3 project, then "
+            "start their linked implementation turns in paced batches."
+        ),
+    )
+    p_approve.add_argument(
+        "thread_refs", nargs="*",
+        help="Ordered full thread ids or unique prefixes (default: all actionable plans)",
+    )
+    p_approve.add_argument(
+        "--start-at",
+        help="Offset-aware ISO 8601 time for the first batch; a past time starts now",
+    )
+    p_approve.add_argument(
+        "--quota-threshold", type=float, default=90.0,
+        help="Stop when five-hour Claude utilization reaches this percent (default: 90)",
+    )
+    p_approve.add_argument(
+        "--yes", action="store_true",
+        help="Confirm the frozen manifest without an interactive prompt",
+    )
+
     # ── status ──
     subs.add_parser(
         "status",
@@ -400,19 +429,38 @@ def main() -> int:
     if getattr(args, "force_rebase_protected", False):
         settings = replace(settings, conflict_rebase_protected=True)
 
-    # Verify repo exists (not needed for status/output/clean/config)
-    if args.command not in ("status", "output", "clean", "config"):
+    # Read-only/state-only commands do not need a local Git checkout. In
+    # particular, approve-plans can target an exact --project-id from a
+    # background service that intentionally cannot access the source repo.
+    if args.command not in (
+        "status", "output", "approve-plans", "clean", "config"
+    ):
         git_dir = os.path.join(settings.repo_dir, ".git")
         if not os.path.exists(git_dir):
             log("❌", f"Not a git repo: {settings.repo_dir}")
             return 1
 
+    launch_commands = {"spawn", "pr", "review", "triage", "conflicts"}
+
     # `output` launches no model and may emit machine-readable JSON on stdout, so
-    # skip the settings banner for it (keep it for every launching command).
-    if args.command != "output":
+    # skip the settings banner for it (keep it for the existing human commands).
+    if args.command not in ("output", "approve-plans"):
+        validate_now = args.command in launch_commands and not (
+            args.command == "spawn" and getattr(args, "from_file", None)
+        )
+        if validate_now:
+            try:
+                settings.validate_model_selection()
+            except RuntimeError as e:
+                log("❌", str(e))
+                return 1
         extra = f"  wait={settings.initial_wait}m" if settings.initial_wait > 0 else ""
-        log("⚙️ ", f"model={settings.model}  mode={settings.mode}  access={settings.access}  "
-            f"effort={settings.effort}  ctx={settings.context_window}{extra}")
+        effort = settings.effective_effort() or "-"
+        log("⚙️ ", f"model={settings.model}→{settings.resolved_model}  mode={settings.mode}  "
+            f"access={settings.access}  effort={effort}  "
+            f"ctx={settings.effective_context_window()}{extra}")
+        for note in settings.model_selection_adjustments():
+            log("↪ ", note)
 
     from .commands.spawn import cmd_spawn
     from .commands.output import cmd_output
@@ -420,6 +468,7 @@ def main() -> int:
     from .commands.review import cmd_review
     from .commands.triage import cmd_triage
     from .commands.conflicts import cmd_conflicts
+    from .commands.approve_plans import cmd_approve_plans
     from .commands.status import cmd_status
     from .commands.clean import cmd_clean
     from .commands.config_cmd import cmd_config
@@ -431,6 +480,7 @@ def main() -> int:
         "review": cmd_review,
         "triage": cmd_triage,
         "conflicts": cmd_conflicts,
+        "approve-plans": cmd_approve_plans,
         "status": cmd_status,
         "clean": cmd_clean,
         "config": cmd_config,

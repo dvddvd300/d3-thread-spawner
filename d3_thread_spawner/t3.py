@@ -329,6 +329,7 @@ def launch_t3(item: WorkItem, token: str) -> str:
     Returns the thread ID.
     """
     s = item.settings
+    s.validate_model_selection()
     now = iso_now()
 
     project_id = resolve_project_id(s)
@@ -356,8 +357,8 @@ def launch_t3(item: WorkItem, token: str) -> str:
     # `options` is the canonical [{id, value}] array, built per-model so we only
     # send options the chosen model supports.
     model_selection = {
-        "instanceId": "claudeAgent",
-        "provider": "claudeAgent",
+        "instanceId": s.provider,
+        "provider": s.provider,
         "model": s.resolved_model,
         "options": s.model_selection_options(),
     }

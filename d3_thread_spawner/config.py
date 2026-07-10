@@ -79,6 +79,7 @@ DEFAULTS = {
         "opus": "claude-opus-4-8",
         "sonnet": "claude-sonnet-4-6",
         "haiku": "claude-haiku-4-5",
+        "mini": "gpt-5.4-mini",
     },
     "model_options": {
         "context_window": "1m",
