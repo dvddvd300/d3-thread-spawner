@@ -24,11 +24,15 @@ class ModelSelectionOptionsTest(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.old_cache_dir = models_mod.T3_CACHE_DIR
         models_mod.T3_CACHE_DIR = self.tmp.name
+        models_mod._cached_provider_metadata.cache_clear()
         models_mod._cached_provider_model_options.cache_clear()
+        models_mod._discover_provider_instance.cache_clear()
 
     def tearDown(self):
         models_mod.T3_CACHE_DIR = self.old_cache_dir
+        models_mod._cached_provider_metadata.cache_clear()
         models_mod._cached_provider_model_options.cache_clear()
+        models_mod._discover_provider_instance.cache_clear()
         self.tmp.cleanup()
 
     def test_gpt_defaults_to_standard_service_tier_without_fast_mode(self):
@@ -210,11 +214,63 @@ class ModelSelectionOptionsTest(unittest.TestCase):
             {"id": "reasoningEffort", "value": "xhigh"},
         ])
 
-    def _write_cache(self, provider, models):
+    def test_discovers_ready_proxy_instance_when_builtin_is_disabled(self):
+        self._write_cache("codex", [], enabled=False, status="disabled", driver="codex")
+        self._write_cache("proxy-openai", [
+            {
+                "slug": "gpt-5.6-sol",
+                "capabilities": {"optionDescriptors": []},
+            },
+        ], enabled=True, status="ready", driver="codex")
+
+        settings = AgentSettings(model="gpt-5.6-sol")
+
+        self.assertEqual(settings.provider, "codex")
+        self.assertEqual(settings.provider_instance, "proxy-openai")
+
+    def test_discovers_ready_anthropic_proxy(self):
+        self._write_cache("claudeAgent", [], enabled=False, status="disabled", driver="claudeAgent")
+        self._write_cache("proxy-anthropic", [
+            {
+                "slug": "claude-opus-4-8",
+                "capabilities": {"optionDescriptors": []},
+            },
+        ], enabled=True, status="ready", driver="claudeAgent")
+
+        self.assertEqual(AgentSettings(model="opus").provider_instance, "proxy-anthropic")
+
+    def test_explicit_provider_instance_override_wins(self):
+        self._write_cache("proxy-openai", [
+            {"slug": "gpt-5.6-sol", "capabilities": {"optionDescriptors": []}},
+        ], enabled=True, status="ready", driver="codex")
+        self._write_cache("custom-openai", [
+            {"slug": "gpt-5.6-sol", "capabilities": {"optionDescriptors": []}},
+        ], enabled=True, status="ready", driver="codex")
+
+        settings = AgentSettings(
+            model="gpt-5.6-sol", provider_instance_override="custom-openai"
+        )
+
+        self.assertEqual(settings.provider_instance, "custom-openai")
+
+    def test_override_rejects_wrong_driver(self):
+        self._write_cache("proxy-anthropic", [
+            {"slug": "gpt-5.6-sol", "capabilities": {"optionDescriptors": []}},
+        ], enabled=True, status="ready", driver="claudeAgent")
+        settings = AgentSettings(
+            model="gpt-5.6-sol", provider_instance_override="proxy-anthropic"
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "requires 'codex'"):
+            settings.validate_model_selection()
+
+    def _write_cache(self, provider, models, **metadata):
         path = os.path.join(self.tmp.name, f"{provider}.json")
         with open(path, "w") as f:
-            json.dump({"models": models}, f)
+            json.dump({"models": models, **metadata}, f)
+        models_mod._cached_provider_metadata.cache_clear()
         models_mod._cached_provider_model_options.cache_clear()
+        models_mod._discover_provider_instance.cache_clear()
 
 
 if __name__ == "__main__":

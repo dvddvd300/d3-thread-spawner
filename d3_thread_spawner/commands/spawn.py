@@ -80,6 +80,7 @@ def _load_jsonl(path: str, settings: AgentSettings) -> List[WorkItem]:
                 t3_host=settings.t3_host,
                 t3_port=settings.t3_port,
                 t3_project_id=settings.t3_project_id,
+                provider_instance_override=settings.provider_instance_override,
                 worktree_dir=settings.worktree_dir,
                 github_repo=settings.github_repo,
                 model_aliases=settings.model_aliases,

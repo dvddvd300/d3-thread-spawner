@@ -21,7 +21,7 @@ python3 - <<'PY'
 import json
 from d3_thread_spawner.models import _cached_provider_model_options
 
-for provider in ("claudeAgent", "codex"):
+for provider in ("claudeAgent", "codex", "proxy-anthropic", "proxy-openai"):
     print(f"\n== {provider}")
     models = _cached_provider_model_options(provider) or {}
     for model, options in sorted(models.items()):

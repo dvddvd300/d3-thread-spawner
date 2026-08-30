@@ -97,6 +97,20 @@ DEFAULT_CODEX_MODEL_OPTIONS: Dict[str, Tuple[str, ...]] = {}
 T3_CACHE_DIR = "~/.t3/caches"
 
 
+@lru_cache(maxsize=None)
+def _cached_provider_metadata(instance_id: str) -> Optional[Dict[str, Any]]:
+    """Load one T3 provider-instance cache record."""
+    path = os.path.expanduser(os.path.join(T3_CACHE_DIR, f"{instance_id}.json"))
+    if not os.path.isfile(path):
+        return None
+    try:
+        with open(path) as f:
+            data = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
 def _option_values_from_descriptor(descriptor: Dict[str, Any]) -> Tuple[str, ...]:
     """Return select option ids from a T3 provider option descriptor."""
     values = descriptor.get("options")
@@ -119,14 +133,8 @@ def _cached_provider_model_options(
     a dict means "T3 has advertised this provider's model list," so an absent
     model can be treated as a real configuration error before we dispatch.
     """
-    path = os.path.expanduser(os.path.join(T3_CACHE_DIR, f"{provider}.json"))
-    if not os.path.isfile(path):
-        return None
-
-    try:
-        with open(path) as f:
-            data = json.load(f)
-    except (OSError, json.JSONDecodeError):
+    data = _cached_provider_metadata(provider)
+    if data is None:
         return None
 
     result: Dict[str, Dict[str, Tuple[str, ...]]] = {}
@@ -169,6 +177,50 @@ def _cached_model_id(provider: str, model: str) -> Optional[str]:
         if candidate.lower() == lower:
             return candidate
     return None
+
+
+def _provider_is_ready(data: Dict[str, Any]) -> bool:
+    """Treat legacy caches without status fields as usable."""
+    return data.get("enabled", True) is not False and data.get("status", "ready") == "ready"
+
+
+@lru_cache(maxsize=None)
+def _discover_provider_instance(driver: str, model: str) -> str:
+    """Find a ready T3 provider instance for a driver/model pair.
+
+    T3 separates the adapter driver (``codex``/``claudeAgent``) from configured
+    instances such as ``proxy-openai`` and ``proxy-anthropic``. Prefer the
+    built-in instance when it is ready, otherwise select a ready instance using
+    the same driver that advertises the requested model.
+    """
+    cache_dir = os.path.expanduser(T3_CACHE_DIR)
+    try:
+        names = sorted(
+            os.path.splitext(name)[0]
+            for name in os.listdir(cache_dir)
+            if name.endswith(".json")
+        )
+    except OSError:
+        return driver
+
+    matches: List[str] = []
+    for instance_id in names:
+        data = _cached_provider_metadata(instance_id)
+        if data is None or not _provider_is_ready(data):
+            continue
+        instance_driver = data.get("driver")
+        if not isinstance(instance_driver, str):
+            instance_driver = instance_id if instance_id in ("codex", "claudeAgent") else ""
+        if instance_driver != driver:
+            continue
+        models = _cached_provider_model_options(instance_id)
+        if models is not None and _cached_model_id(instance_id, model) is None:
+            continue
+        matches.append(instance_id)
+
+    if driver in matches:
+        return driver
+    return matches[0] if matches else driver
 
 
 def _max_known_value(values: Tuple[str, ...], order: Tuple[str, ...]) -> Optional[str]:
@@ -233,6 +285,7 @@ class AgentSettings:
     t3_host: str = "127.0.0.1"
     t3_port: int = 3773
     t3_project_id: str = ""
+    provider_instance_override: str = ""
     # Where T3 persists auth sessions + the signing key used to derive a
     # session token (the current auth model — no browser cookie is written).
     t3_state_db: str = "~/.t3/userdata/state.sqlite"
@@ -291,15 +344,38 @@ class AgentSettings:
     @property
     def resolved_model(self) -> str:
         """Resolve model alias to full model ID."""
-        return _cached_model_id(self.provider, self._alias_model) or self._alias_model
+        return _cached_model_id(self.provider_instance, self._alias_model) or self._alias_model
 
     @property
     def provider(self) -> str:
-        """T3 provider instance for the resolved model (``gpt-*`` → codex)."""
+        """T3 adapter driver for the resolved model (``gpt-*`` → codex)."""
         return "codex" if self._alias_model.lower().startswith("gpt-") else "claudeAgent"
 
+    @property
+    def provider_instance(self) -> str:
+        """Configured or discovered T3 provider instance id."""
+        if self.provider_instance_override:
+            return self.provider_instance_override
+        return _discover_provider_instance(self.provider, self._alias_model)
+
+    def validate_provider_instance(self) -> None:
+        data = _cached_provider_metadata(self.provider_instance)
+        if data is None:
+            return
+        if not _provider_is_ready(data):
+            message = data.get("message") or f"status={data.get('status', 'unknown')}"
+            raise RuntimeError(
+                f"T3 provider instance {self.provider_instance!r} is not ready: {message}"
+            )
+        instance_driver = data.get("driver")
+        if isinstance(instance_driver, str) and instance_driver != self.provider:
+            raise RuntimeError(
+                f"T3 provider instance {self.provider_instance!r} uses driver "
+                f"{instance_driver!r}, but model {self.model!r} requires {self.provider!r}."
+            )
+
     def _model_option_values(self) -> Dict[str, Tuple[str, ...]]:
-        cached = _cached_provider_model_options(self.provider)
+        cached = _cached_provider_model_options(self.provider_instance)
         if cached is not None:
             model_id = self.resolved_model
             if model_id in cached:
@@ -321,14 +397,15 @@ class AgentSettings:
         does. For aliases and known built-in ids, however, an absent cache entry
         means our local config points at a model T3 is not advertising.
         """
-        cached = _cached_provider_model_options(self.provider)
+        self.validate_provider_instance()
+        cached = _cached_provider_model_options(self.provider_instance)
         if cached is None or self.resolved_model in cached:
             return
         if self.model not in self.model_aliases and not _is_known_builtin_model(self._alias_model):
             return
         available = ", ".join(sorted(cached))
         raise RuntimeError(
-            f"Configured {self.provider} model {self.model!r} resolves to "
+            f"Configured {self.provider_instance} model {self.model!r} resolves to "
             f"{self.resolved_model!r}, but T3 is not advertising it. "
             f"Available models: {available}"
         )

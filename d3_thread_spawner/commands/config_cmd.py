@@ -36,6 +36,7 @@ TEMPLATE = """\
 
 [t3]
 # project_id = ""             # T3 project UUID (auto-detected if empty)
+# provider_instance = ""     # auto-discover ready instance, or pin proxy-openai
 # host/port are auto-detected from ~/.t3/userdata/server-runtime.json
 
 [worktree]

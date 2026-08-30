@@ -357,8 +357,8 @@ def launch_t3(item: WorkItem, token: str) -> str:
     # `options` is the canonical [{id, value}] array, built per-model so we only
     # send options the chosen model supports.
     model_selection = {
-        "instanceId": s.provider,
-        "provider": s.provider,
+        "instanceId": s.provider_instance,
+        "provider": s.provider_instance,
         "model": s.resolved_model,
         "options": s.model_selection_options(),
     }
