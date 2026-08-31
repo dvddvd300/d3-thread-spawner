@@ -66,6 +66,12 @@ def build_parser() -> argparse.ArgumentParser:
              "to the Codex provider (e.g. gpt-5.5, gpt-5.4)",
     )
     parser.add_argument(
+        "--provider-instance", default=None,
+        help="Exact T3 provider instance id. By default d3 discovers a ready "
+             "instance for the model driver (for example proxy-openai or "
+             "proxy-anthropic).",
+    )
+    parser.add_argument(
         "--mode", choices=["build", "plan"], default=None,
         help="Interaction mode: build=act immediately, "
              "plan=research and propose first (default: build)",
@@ -456,7 +462,8 @@ def main() -> int:
                 return 1
         extra = f"  wait={settings.initial_wait}m" if settings.initial_wait > 0 else ""
         effort = settings.effective_effort() or "-"
-        log("⚙️ ", f"model={settings.model}→{settings.resolved_model}  mode={settings.mode}  "
+        log("⚙️ ", f"provider={settings.provider_instance}  "
+            f"model={settings.model}→{settings.resolved_model}  mode={settings.mode}  "
             f"access={settings.access}  effort={effort}  "
             f"ctx={settings.effective_context_window()}{extra}")
         for note in settings.model_selection_adjustments():

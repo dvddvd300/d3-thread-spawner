@@ -31,7 +31,10 @@ class LoadJsonlTest(unittest.TestCase):
             path = f.name
 
         try:
-            item = _load_jsonl(path, AgentSettings())[0]
+            item = _load_jsonl(
+                path,
+                AgentSettings(provider_instance_override="proxy-openai"),
+            )[0]
         finally:
             os.unlink(path)
 
@@ -42,6 +45,7 @@ class LoadJsonlTest(unittest.TestCase):
         self.assertEqual(item.settings.context_window, "200k")
         self.assertFalse(item.settings.thinking)
         self.assertTrue(item.settings.fast_mode)
+        self.assertEqual(item.settings.provider_instance_override, "proxy-openai")
 
 
 if __name__ == "__main__":

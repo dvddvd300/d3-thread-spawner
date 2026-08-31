@@ -37,6 +37,12 @@ Programmatic [T3 Code](https://t3.chat) thread launcher. Spawn Claude Code agent
 > normalize to the highest real effort; unsupported `context_window = "1m"`
 > falls back to `200k`. See [Model Validation](docs/model-validation.md) for the
 > monthly ping-pong test workflow.
+>
+> T3 provider drivers and configured instances are separate. d3 automatically
+> discovers a ready instance advertising the selected model, so a Codex driver
+> can route through `proxy-openai` and a Claude driver through
+> `proxy-anthropic`. Use `--provider-instance` when more than one ready instance
+> advertises the model and an exact route is required.
 
 ## Quick Start
 
@@ -476,6 +482,7 @@ initial_wait = 0              # minutes to wait before first batch
 
 [t3]
 project_id = ""             # auto-detected from T3 state if empty
+# provider_instance = ""    # auto-discovers a ready instance; e.g. proxy-openai
 
 [worktree]
 dir = "~/d3ts-worktrees/{project}"   # {project} = repo dir name
@@ -520,6 +527,7 @@ fast_mode = false           # Opus 4.5/4.6 only
 |----------|-------------|
 | `D3TS_T3_TOKEN` | Explicit T3 session token (skips cookies DB lookup) |
 | `D3TS_T3_PROJECT_ID` | T3 project UUID |
+| `D3TS_PROVIDER_INSTANCE` | Exact T3 provider instance; defaults to ready-instance discovery |
 | `D3TS_MODEL` | Default model |
 | `D3TS_MODE` | Interaction mode (build/plan) |
 | `D3TS_ACCESS` | Access level (full/auto-accept/supervised) |
@@ -603,6 +611,7 @@ d3-spawn [flags] <command> [command-flags]
 | Flag | Description |
 |------|-------------|
 | `--model MODEL` | Model alias (`opus`→4.8, `sonnet`, `haiku`, `mini`→gpt-5.4-mini) or full ID |
+| `--provider-instance ID` | Exact T3 provider instance; otherwise discover a ready instance for the model driver |
 | `--mode MODE` | Interaction mode: build or plan |
 | `--access LEVEL` | Access level: full, auto-accept, or supervised |
 | `--effort LEVEL` | Codex values vary by model: low, medium, high, xhigh; GPT-5.6 Sol/Terra add max and ultra, Luna adds max. Claude: low, medium, high, xhigh, max, ultracode, ultrathink. Unsupported known-model values normalize to the model max |

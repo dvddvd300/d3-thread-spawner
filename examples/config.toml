@@ -22,6 +22,7 @@ initial_wait = 0                   # minutes to wait before first batch
 
 [t3]
 # project_id = "your-uuid-here"   # auto-detected from T3 state if empty
+# provider_instance = ""          # auto-discovers ready proxy/built-in instance
 # T3 host/port are auto-detected from ~/.t3/userdata/server-runtime.json
 
 [worktree]
