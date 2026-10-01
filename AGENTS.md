@@ -2,8 +2,6 @@
 
 # Project: d3-thread-spawner
 
-Linear project: **d3-thread-spawner** (team ZEU; project state is "completed" — file follow-up work as maintenance issues there).
-
 Programmatic T3 Code thread launcher: spawns Claude/Codex agents in isolated git worktrees through T3 Code's local HTTP API — one-off prompts, prompt files, or JSONL batches (30+ tasks). Other subcommands: `pr` (address GitHub PR review threads), `review` (full local PR review), `triage` (one-shot triage across open PRs), `conflicts` (resolve merge conflicts across conflicting branches), `approve-plans` (schedule captured plans in quota-aware batches), `status`, `clean`, `config`.
 
 ## Stack
