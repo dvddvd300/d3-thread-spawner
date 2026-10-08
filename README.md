@@ -525,7 +525,7 @@ fast_mode = false           # Opus 4.5/4.6 only
 
 | Variable | Description |
 |----------|-------------|
-| `D3TS_T3_TOKEN` | Explicit T3 session token (skips cookies DB lookup) |
+| `D3TS_T3_TOKEN` | Explicit T3 session token (skips automatic token discovery) |
 | `D3TS_T3_PROJECT_ID` | T3 project UUID |
 | `D3TS_PROVIDER_INSTANCE` | Exact T3 provider instance; defaults to ready-instance discovery |
 | `D3TS_MODEL` | Default model |
@@ -590,7 +590,7 @@ d3-spawn spawn --from-file tasks.jsonl --initial-wait 120 --batch-size 2 --batch
 d3-spawn connects to T3 Code's local HTTP API. Connection details are auto-detected:
 
 - **Host/Port**: Read from `~/.t3/userdata/server-runtime.json`
-- **Session Token**: Extracted from T3's cookies database, or set `D3TS_T3_TOKEN`
+- **Session Token**: Rebuilt from T3's `state.sqlite` auth session (legacy builds: cookies database), or set `D3TS_T3_TOKEN`
 - **Project ID**: Matched from `~/.t3/userdata/state.sqlite` by repo path, or set in config
 
 ### How it works
